@@ -33,12 +33,13 @@ export function useAchievements(me, local, onUnlock, deps) {
         const { data } = await sb.from('achievements').select('key').eq('user_id', me.id)
         have.current = new Set((data || []).map(r => r.key))
       }
-      const [w, p, v, chars] = await Promise.all([
+      const [w, p, v] = await Promise.all([
         sb.from('wallets').select('cash, holdings, trades').eq('user_id', me.id).maybeSingle(),
         sb.from('polls').select('id', { count: 'exact', head: true }).eq('user_id', me.id),
         sb.from('poll_votes').select('poll_id', { count: 'exact', head: true }).eq('user_id', me.id),
-        sb.from('characters').select('id, price, ipo_at'),
       ])
+      const ids = [...new Set([...Object.keys(w.data?.holdings || {}).map(Number), ...(w.data?.trades || []).map(t => t.id)])]
+      const chars = ids.length ? await sb.from('characters').select('id, price, ipo_at').in('id', ids) : { data: [] }
       const byId = Object.fromEntries((chars.data || []).map(c => [c.id, c]))
       const wallet = w.data || { cash: 10000, holdings: {}, trades: [] }
       const worth = Number(wallet.cash) + Object.entries(wallet.holdings || {}).reduce((a, [id, h]) => a + (Number(byId[id]?.price) || 0) * h.qty, 0)

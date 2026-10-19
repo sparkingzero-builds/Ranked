@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { sb } from './cloud.js'
+import { sb, fetchAll } from './cloud.js'
 import { coins, pct, change24, powerGap, SOURCES, START_CASH, TICK_MS } from './market.js'
 
 const RANGES = [['6H', 6], ['24H', 24], ['3D', 72], ['7D', 168]]
@@ -16,17 +16,20 @@ function useMarket(me) {
   const [wallet, setWallet] = useState(null)
   const [events, setEvents] = useState([])
   const timer = useRef()
+  const sparkAt = useRef(0)
 
   async function load() {
     sb.from('market_events').select('*').gt('ends_at', new Date().toISOString()).then(({ data }) => setEvents(data || []))
-    const [c, s, n, w] = await Promise.all([
-      sb.from('characters').select('*'),
-      sb.from('price_hourly').select('char_id, t, price').order('t'),
+    const [c, n, w] = await Promise.all([
+      fetchAll(() => sb.from('characters').select('*').order('id')).then(data => ({ data })),
       sb.from('news').select('*').order('created_at', { ascending: false }).limit(40),
       sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(),
     ])
     setChars(c.data || [])
-    const sp = {}; (s.data || []).forEach(r => (sp[r.char_id] ||= []).push(Number(r.price))); setSparks(sp)
+    if (Date.now() - sparkAt.current > 15 * 60000) {
+      sparkAt.current = Date.now()
+      fetchAll(() => sb.rpc('sparklines')).then(rows => setSparks(Object.fromEntries(rows.map(r => [r.char_id, r.prices.map(Number)])))).catch(() => {})
+    }
     setNews(n.data || [])
     setWallet(w.data || { cash: START_CASH, holdings: {}, trades: [] })
   }

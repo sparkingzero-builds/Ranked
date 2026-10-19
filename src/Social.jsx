@@ -89,6 +89,7 @@ function feedText(a) {
     case 'achievement': return <>unlocked {ACH[p.key]?.icon} <b>{ACH[p.key]?.label || p.key}</b></>
     case 'poll': return <>asked: <b>{p.question}</b></>
     case 'char_top': return <>made <b>{p.name}</b> their #1 character</>
+    case 'reset': return <>reset their wallet back to 10,000 coins 🔄</>
     case 'bet': return <>started a bet: <b>{p.a} vs {p.b}</b> ({p.stake} coins, backing {p.pick})</>
     case 'bet_won': return <>won <b>{p.payout} coins</b> on {p.a} vs {p.b} 🏆</>
     case 'dividend': return <>got a <b>{p.amount} coin</b> dividend from {p.sym} 💰</>
@@ -188,13 +189,14 @@ export function Profile({ id, me, myList, friends, onProfileSaved, openAnime }) 
     if (!f) return
     setD(null)
     ;(async () => {
-      const [st, w, ach, act, chars] = await Promise.all([
+      const [st, w, ach, act] = await Promise.all([
         sb.from('user_state').select('rankings, ratings, extra').eq('user_id', id).maybeSingle(),
         sb.from('wallets').select('cash, holdings, trades').eq('user_id', id).maybeSingle(),
         sb.from('achievements').select('key, unlocked_at').eq('user_id', id),
         sb.from('activity').select('*').eq('user_id', id).order('created_at', { ascending: false }).limit(15),
-        sb.from('characters').select('id, sym, name, image, price'),
       ])
+      const held = Object.keys(w.data?.holdings || {}).map(Number)
+      const chars = held.length ? await sb.from('characters').select('id, sym, name, image, price').in('id', held) : { data: [] }
       const top = (st.data?.rankings?.['10'] || []).slice(0, 10)
       const [media, user, list] = await Promise.all([
         anilistMedia(top),

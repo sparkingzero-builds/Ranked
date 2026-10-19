@@ -15,7 +15,7 @@ export default function Lobby() {
       if (error) setMsg(error.message)
     } else {
       if (!/^[A-Za-z0-9_]{2,20}$/.test(f.username)) { setMsg('Username: 2–20 letters, numbers or _'); setBusy(false); return }
-      const { data: taken } = await sb.from('profiles').select('id').eq('username', f.username).maybeSingle()
+      const { data: taken } = await sb.rpc('username_taken', { p_name: f.username })
       if (taken) { setMsg('That username is taken'); setBusy(false); return }
       const { data, error } = await sb.auth.signUp({
         email: f.email, password: f.password,

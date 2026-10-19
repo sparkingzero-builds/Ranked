@@ -23,11 +23,15 @@ export async function ensureProfile(user) {
   let { data: p } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle()
   if (!p) {
     const m = user.user_metadata || {}
-    const { data, error } = await sb.from('profiles')
-      .insert({ id: user.id, username: m.username || user.email.split('@')[0], anilist_name: m.anilist_name || null })
-      .select().single()
-    if (error) throw error
-    p = data
+    const base = (m.username || user.email.split('@')[0]).replace(/[^A-Za-z0-9_]/g, '').slice(0, 16) || 'player'
+    // if the name got taken between sign-up and first login, add digits instead of failing
+    for (let i = 0; i < 5 && !p; i++) {
+      const username = i ? `${base}${Math.floor(Math.random() * 900 + 100)}` : base
+      const { data, error } = await sb.from('profiles').insert({ id: user.id, username, anilist_name: m.anilist_name || null }).select().single()
+      if (data) p = data
+      else if (error && error.code !== '23505') throw error
+    }
+    if (!p) throw new Error('Could not create your profile, try another username')
     await sb.from('user_state').upsert({ user_id: user.id })
     await sb.from('wallets').upsert({ user_id: user.id }, { ignoreDuplicates: true })
   }
@@ -80,4 +84,16 @@ const isEmpty = v => v == null || (Array.isArray(v) ? !v.length : typeof v === '
 export function logActivity(kind, payload) {
   if (!sb) return
   sb.from('activity').insert({ kind, payload }).then(() => {})
+}
+
+// Supabase returns at most 1,000 rows per request; this pages through a query until it's done.
+// Pass a function that builds the query, e.g. fetchAll(() => sb.from('characters').select('*').order('id'))
+export async function fetchAll(build) {
+  const out = []
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await build().range(from, from + 999)
+    if (error) throw error
+    out.push(...(data || []))
+    if (!data || data.length < 1000) return out
+  }
 }
