@@ -154,8 +154,9 @@ function Main({ me, setMe }) {
     try {
       const u = await fetchUser(name)
       setUser(u)
-      const [l, a] = await Promise.all([fetchList(name), fetchActivity(u.id)])
+      const [l, a] = await Promise.all([fetchList(name), fetchActivity(u.id).catch(() => [])])
       setList(l); setActivity(a)
+      if (l.__stale) setErr('AniList is busy right now, so this is your last saved list. It will refresh when AniList is back.')
     } catch (e) { setErr(e.message) }
     setLoading(false)
   }
@@ -185,7 +186,7 @@ function Main({ me, setMe }) {
         {me && <div className="mebox" title="Your profile" onClick={() => openProfile(me.id)}><b>{me.username}</b><span>{synced ? 'synced' : 'syncing…'}</span></div>}
       </nav>
       <main className="wrap">
-        {err && <div className="card error">Couldn't load AniList user: {err}</div>}
+        {err && <div className="card error">{err.startsWith('AniList is busy') ? err : `Couldn't load your AniList: ${err}`}</div>}
         {loading && !list.length ? <div className="loading">Loading your AniList…</div> : <>
           {page === 'home' && <Home {...ctx} />}
           {page === 'list' && <ListPage {...ctx} />}

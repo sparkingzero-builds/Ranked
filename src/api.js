@@ -1,25 +1,46 @@
 const URL = 'https://graphql.anilist.co'
+const sleep = ms => new Promise(r => setTimeout(r, ms))
 
-async function gql(query, variables) {
-  const res = await fetch(URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ query, variables }),
-  })
-  const json = await res.json()
-  if (json.errors) throw new Error(json.errors[0].message)
-  return json.data
+// AniList sometimes answers with an HTML error page or 429 when it's overloaded/rate limiting.
+// Retry a few times with backoff, and turn non-JSON replies into a readable error.
+async function gql(query, variables, tries = 3) {
+  for (let i = 0; ; i++) {
+    let res, text
+    try {
+      res = await fetch(URL, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify({ query, variables }) })
+      text = await res.text()
+    } catch { if (i + 1 < tries) { await sleep(1500 * (i + 1)); continue } throw new Error('AniList is unreachable right now') }
+    let json = null
+    try { json = JSON.parse(text) } catch {}
+    const busy = !json || res.status === 429 || res.status >= 500
+    if (busy && i + 1 < tries) { await sleep((+res.headers.get('Retry-After') || 2 * (i + 1)) * 1000); continue }
+    if (!json) throw new Error('AniList is busy right now, try again in a minute')
+    if (json.errors) throw new Error(json.errors[0].message)
+    return json.data
+  }
+}
+
+// last good copy of a user's data, used when AniList is down
+const cacheKey = (k, n) => `ranked.cache.${k}.${String(n).toLowerCase()}`
+function cached(k, n, fn) {
+  return fn().then(v => { try { localStorage.setItem(cacheKey(k, n), JSON.stringify(v)) } catch {} return v })
+    .catch(e => {
+      try { const v = JSON.parse(localStorage.getItem(cacheKey(k, n))); if (v) { v.__stale = true; return v } } catch {}
+      throw e
+    })
 }
 
 const MEDIA = `id title { romaji english } coverImage { extraLarge large medium color } episodes duration genres averageScore format seasonYear
   nextAiringEpisode { episode timeUntilAiring }`
 
-export async function fetchUser(name) {
-  const d = await gql(`query($n:String){ User(name:$n){ id name avatar { medium } } }`, { n: name })
-  return d.User
+export function fetchUser(name) {
+  return cached('user', name, () => gql(`query($n:String){ User(name:$n){ id name avatar { medium } } }`, { n: name }).then(d => d.User))
 }
 
-export async function fetchList(name) {
+export function fetchList(name) {
+  return cached('list', name, () => fetchListLive(name))
+}
+async function fetchListLive(name) {
   const d = await gql(`query($n:String){ MediaListCollection(userName:$n, type:ANIME){
     lists { entries { status progress score(format:POINT_10) updatedAt startedAt { year month day } completedAt { year month day } media { ${MEDIA} } } } } }`, { n: name })
   const seen = new Map()
