@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { ANILIST_CLIENT_ID, connectAniList, disconnectAniList, getToken, saveToAniList } from './anilistAuth.js'
 import WatchAlong from './WatchAlong.jsx'
 import Stats from './Stats.jsx'
 import Market from './Market.jsx'
@@ -85,7 +86,17 @@ function Main({ me, setMe }) {
     const entries = { ...(extra.entries || {}), [m.id]: { status, progress, score: cur?.score || 0, media: cur?.media || snap, updatedAt: Date.now() } }
     setExtra({ ...extra, entries })
     if (status !== 'REMOVED') logActivity('status', { title: title(m), cover: m.coverImage?.medium, status })
+    // Connected to AniList: write it there too, then let AniList be the source of truth for this show again
+    if (getToken()) saveToAniList(m.id, status, progress).then(() => {
+      setList(l => status === 'REMOVED' ? l.filter(e => e.media.id !== m.id)
+        : l.some(e => e.media.id === m.id) ? l.map(e => e.media.id === m.id ? { ...e, status, progress } : e)
+        : [...l, { status, progress, score: 0, media: cur?.media || snap }])
+      setExtra(x => { const en = { ...(x.entries || {}) }; delete en[m.id]; return { ...x, entries: en } })
+      flash(`Saved to AniList: ${title(m)}`)
+    }).catch(e => flash(`AniList didn't save (${e.message}). Kept in Ranked.`))
   }
+  const [flashMsg, setFlashMsg] = useState(null)
+  const flash = t => { setFlashMsg(t); setTimeout(() => setFlashMsg(null), 3500) }
   const [profileId, setProfileId] = useState(null)
   const [toast, setToast] = useState(null)
   useRankHistory(rankings, history, setHistory)
@@ -179,6 +190,7 @@ function Main({ me, setMe }) {
           {page === 'browse' && <Browse {...ctx} />}
         </>}
       </main>
+      {flashMsg && <div className="flash">{flashMsg}</div>}
       {toast && <div className="toast"><span>{toast.icon}</span><div><b>Achievement unlocked</b>{toast.label}: {toast.desc}</div></div>}
       {rating && <RatingModal m={rating} value={ratings[rating.id] || {}} onClose={() => setRating(null)}
         onSave={v => {
@@ -251,6 +263,7 @@ function ListPage({ list, overall, openRating, setStatus }) {
   const shown = list.filter(e => e.status === tab).sort((a, b) => b.score - a.score)
   return (
     <>
+      <AniListLink />
       <div className="tabs">{tabs.map(t => <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
         {t.charAt(0) + t.slice(1).toLowerCase()} <small>{list.filter(e => e.status === t).length}</small></button>)}</div>
       <div className="roster">
@@ -433,6 +446,7 @@ function Browse({ openRating, list, setStatus }) {
   }, [q])
   return (
     <>
+      <AniListLink />
       <input className="search big" placeholder="Search anime…" value={q} onChange={e => setQ(e.target.value)} />
       <h3>{q ? 'Results' : 'Trending now'}</h3>
       <div className="browse">
@@ -650,4 +664,14 @@ function StatusPicker({ m, status, setStatus }) {
       </div>, document.body)}
     </div>
   )
+}
+
+function AniListLink() {
+  const [on, setOn] = useState(!!getToken())
+  if (!ANILIST_CLIENT_ID) return null
+  return on
+    ? <div className="allink on">✓ Connected to AniList: list changes save to your AniList too
+        <button onClick={() => { disconnectAniList(); setOn(false) }}>Disconnect</button></div>
+    : <div className="allink">List changes only save in Ranked right now.
+        <button className="pill" onClick={connectAniList}>🔗 Connect AniList</button></div>
 }
