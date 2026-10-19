@@ -446,3 +446,10 @@ h3::before { content: ''; width: 8px; height: 22px; background: var(--blue); tra
 .sname .badge { vertical-align: 3px; }
 /* the stock panel stays pinned but scrolls on its own, so Buy/Sell and orders are reachable on short screens */
 .mgrid aside { max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-width: thin; }
+/* fit all tabs: tighter tabs, avatar-only AniList chip, search shortcut */
+.links { gap: 0; }
+.links button { font-size: 15px; padding: 7px 10px; letter-spacing: .5px; }
+.userbox span { display: none; }
+.navsearch { font-size: 20px; flex: none; padding: 4px; }
+@media (max-width: 1500px) { .links button { font-size: 13px; padding: 6px 7px; } }
+.nav { padding: 0 max(16px, calc(50vw - 880px)); }

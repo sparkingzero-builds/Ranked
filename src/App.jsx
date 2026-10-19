@@ -135,10 +135,11 @@ function Main({ me, setMe }) {
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
         <div className="links">
-          {[['home', 'Home'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['mates', 'Mates'], ['squad', 'Squad'], ['watch', 'Watch-Along'], ['stats', 'Stats'], ['market', 'Market'], ['browse', 'Browse']].map(([k, l]) =>
+          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['mates', 'Mates'], ['squad', 'Squad'], ['watch', 'Watch-Along'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
             <button key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)}>{l}</button>)}
         </div>
         <UserBox user={user} onChange={changeAnilist} />
+        <button className="navsearch" title="Search anime" onClick={() => setPage('browse')}>🔍</button>
         <Bell me={me} />
         {me && <div className="mebox" title="Your profile" onClick={() => openProfile(me.id)}><b>{me.username}</b><span>{synced ? 'synced' : 'syncing…'}</span></div>}
       </nav>
