@@ -442,3 +442,7 @@ h3::before { content: ''; width: 8px; height: 22px; background: var(--blue); tra
 @keyframes pop { from { transform: skewX(-6deg) translateY(30px); opacity: 0; } }
 .sname .badge { display: inline-block; width: auto; font-size: 11px; color: #120c2c; overflow: visible; }
 .links { justify-content: safe center; }
+.badge { white-space: nowrap; line-height: 1.5; height: auto; }
+.sname .badge { vertical-align: 3px; }
+/* the stock panel stays pinned but scrolls on its own, so Buy/Sell and orders are reachable on short screens */
+.mgrid aside { max-height: calc(100vh - 100px); overflow-y: auto; scrollbar-width: thin; }
