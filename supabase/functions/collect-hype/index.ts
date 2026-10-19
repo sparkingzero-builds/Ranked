@@ -140,7 +140,7 @@ async function collect(chunkArg?: number) {
   const alBy: Record<number, any> = {}
   for (let k = 0; k < ids.length; k += 50) {
     const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
-      media(perPage:1, sort:POPULARITY_DESC){ nodes { trending nextAiringEpisode { timeUntilAiring } } } } } }`, { ids: ids.slice(k, k + 50) })
+      media(type:ANIME, perPage:25){ nodes { status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
     for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
   }
 
@@ -180,12 +180,20 @@ async function collect(chunkArg?: number) {
       raw.anilist = a.favourites
       const last = lastOf(c.id, 'anilist'), dAvg = avgOf(c.id, 'anilist_delta')
       if (last != null) { raw.anilist_delta = a.favourites - last; if (dAvg != null) parts.anilist = { score: score((raw.anilist_delta + 1) / (dAvg + 1)), label: `+${raw.anilist_delta} favourites/hr` } }
-      const m = a.media.nodes[0]
-      if (m) {
-        raw.trending = m.trending
-        const b = avgOf(c.id, 'trending'); if (b != null) parts.trending = { score: score((m.trending + 1) / (b + 1)), label: `trending score ${m.trending}` }
-        const aired = m.nextAiringEpisode && 7 * 86400 - m.nextAiringEpisode.timeUntilAiring < 2 * 86400
-        parts.airing = { score: aired ? 0.6 : 0, label: aired ? 'new episode this week' : m.nextAiringEpisode ? 'airing' : 'not airing' }
+      // look at every anime they're in: sequels (e.g. Black Clover Season 2) count, not just the most popular entry
+      const shows = a.media.nodes || []
+      if (shows.length) {
+        const trending = Math.max(...shows.map((n: any) => n.trending || 0))
+        raw.trending = trending
+        const b = avgOf(c.id, 'trending'); if (b != null) parts.trending = { score: score((trending + 1) / (b + 1)), label: `trending score ${trending}` }
+        const live = shows.filter((n: any) => n.status === 'RELEASING' && n.nextAiringEpisode)
+          .sort((x: any, y: any) => x.nextAiringEpisode.timeUntilAiring - y.nextAiringEpisode.timeUntilAiring)[0]
+        const showName = live ? (live.title.english || live.title.romaji) : ''
+        // weekly show: under 5 days until the next episode means one dropped in the last ~2 days
+        const fresh = live && live.nextAiringEpisode.timeUntilAiring > 5 * 86400
+        parts.airing = live
+          ? { score: fresh ? 0.6 : 0.25, label: fresh ? `${showName} ep ${live.nextAiringEpisode.episode - 1} just dropped` : `${showName} airing, ep ${live.nextAiringEpisode.episode} next` }
+          : { score: 0, label: 'not airing' }
       }
     }
 
