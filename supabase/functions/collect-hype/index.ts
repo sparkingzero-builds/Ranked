@@ -140,7 +140,7 @@ async function collect(chunkArg?: number) {
   const alBy: Record<number, any> = {}
   for (let k = 0; k < ids.length; k += 50) {
     const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
-      media(type:ANIME, perPage:25){ nodes { status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
+      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
     for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
   }
 
