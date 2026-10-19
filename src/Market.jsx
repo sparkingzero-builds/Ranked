@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { sb } from './cloud.js'
 import { coins, pct, change24, powerGap, SOURCES, START_CASH, TICK_MS } from './market.js'
 
-const RANGES = [['6H', 6], ['24H', 24], ['7D', 168], ['30D', 720]]
+const RANGES = [['6H', 6], ['24H', 24], ['3D', 72], ['7D', 168]]
 const ago = t => {
   const m = Math.round((Date.now() - new Date(t)) / 60000)
   return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`

@@ -88,8 +88,8 @@ begin
       where id = c.id;
     insert into price_ticks (char_id, price, power, hype) values (c.id, np, npow, c.hype);
   end loop;
-  delete from price_ticks where t < now() - interval '30 days';
-  delete from hype_history where t < now() - interval '30 days';
+  delete from price_ticks where t < now() - interval '7 days';
+  delete from hype_history where t < now() - interval '14 days';
   delete from news where created_at < now() - interval '14 days';
 end $$;
 revoke execute on function market_tick() from public, anon, authenticated;

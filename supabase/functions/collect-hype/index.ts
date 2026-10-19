@@ -41,26 +41,34 @@ const score = (ratio: number) => Math.max(-0.5, Math.min(1, Math.log2(Math.max(r
 const median = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s.length ? s[Math.floor(s.length / 2)] : 0 }
 const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '')
 
-async function seed() {
-  const { count } = await db.from('characters').select('id', { count: 'exact', head: true })
-  if (count) return { seeded: 0, note: 'already seeded' }
-  const d = await anilist(`{ Page(perPage:50){ characters(sort:FAVOURITES_DESC){ id name { full } image { large } favourites
-    media(perPage:1, sort:POPULARITY_DESC){ nodes { title { romaji english } coverImage { color } } } } } }`)
-  const taken = new Set<string>()
-  const rows = d.data.Page.characters.map((c: any) => {
-    const parts = c.name.full.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
-    const cands = [parts[parts.length - 1], parts[0], parts.join('')].filter(Boolean).map((p: string) => p.slice(0, 5).toUpperCase())
-    let sym = cands.find((x: string) => x.length >= 2 && !taken.has(x)) || cands[0] + c.id % 100
-    taken.add(sym)
-    const p0 = Math.round(2000 + Math.sqrt(c.favourites) * 30)
-    const base = +(15 + Math.sqrt(c.favourites) / 2.2).toFixed(2)
-    const m = c.media.nodes[0]
-    return { id: c.id, name: c.name.full, sym, image: c.image.large, favourites: c.favourites,
-      media_title: m ? (m.title.english || m.title.romaji) : null, color: m?.coverImage.color || null,
-      p0, base, power: p0, price: base, price_24h: base }
-  })
-  await db.from('characters').insert(rows)
-  return { seeded: rows.length }
+// Lists the top `count` AniList characters by favourites; already-listed ones are skipped,
+// so calling it again with a bigger count just adds the next tier of characters.
+async function seed(count = 50) {
+  const { data: existing } = await db.from('characters').select('id, sym')
+  const have = new Set((existing || []).map(c => c.id))
+  const taken = new Set<string>((existing || []).map(c => c.sym))
+  const rows: any[] = []
+  for (let page = 1; page <= Math.ceil(Math.min(count, 500) / 50); page++) {
+    const d = await anilist(`query($p:Int){ Page(page:$p, perPage:50){ characters(sort:FAVOURITES_DESC){ id name { full } image { large } favourites
+      media(perPage:1, sort:POPULARITY_DESC){ nodes { title { romaji english } coverImage { color } } } } } }`, { p: page })
+    for (const c of d?.data?.Page?.characters || []) {
+      if (have.has(c.id)) continue
+      const parts = c.name.full.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
+      const cands = [parts[parts.length - 1], parts[0], parts.join('')].filter(Boolean).map((p: string) => p.slice(0, 5).toUpperCase())
+      let sym = cands.find((x: string) => x.length >= 2 && !taken.has(x))
+      if (!sym) { let n = 2; while (taken.has((cands[0] || 'CHR') + n)) n++; sym = (cands[0] || 'CHR') + n }
+      taken.add(sym)
+      const p0 = Math.round(2000 + Math.sqrt(c.favourites) * 30)
+      const base = +(15 + Math.sqrt(c.favourites) / 2.2).toFixed(2)
+      const m = c.media.nodes[0]
+      rows.push({ id: c.id, name: c.name.full, sym, image: c.image.large, favourites: c.favourites,
+        media_title: m ? (m.title.english || m.title.romaji) : null, color: m?.coverImage.color || null,
+        p0, base, power: p0, price: base, price_24h: base })
+    }
+    await sleep(800)
+  }
+  if (rows.length) await db.from('characters').insert(rows)
+  return { added: rows.length, total: have.size + rows.length }
 }
 
 async function wikiTitle(c: any) {
@@ -129,9 +137,12 @@ async function collect(chunkArg?: number) {
 
   // AniList: favourites + show trending/airing, one batched call
   const ids = chars.map((c: any) => c.id)
-  const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
-    media(perPage:1, sort:POPULARITY_DESC){ nodes { trending nextAiringEpisode { timeUntilAiring } } } } } }`, { ids })
-  const alBy = Object.fromEntries((al?.data?.Page?.characters || []).map((c: any) => [c.id, c]))
+  const alBy: Record<number, any> = {}
+  for (let k = 0; k < ids.length; k += 50) {
+    const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
+      media(perPage:1, sort:POPULARITY_DESC){ nodes { trending nextAiringEpisode { timeUntilAiring } } } } } }`, { ids: ids.slice(k, k + 50) })
+    for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
+  }
 
   // baselines: last 7 days of raw readings per character
   const { data: hist } = await db.from('hype_history').select('char_id, raw').gte('t', new Date(Date.now() - 7 * 86400000).toISOString()).order('t')
@@ -159,7 +170,7 @@ async function collect(chunkArg?: number) {
       if (m) { raw.mal = m.raw; const last = lastOf(c.id, 'mal'), dAvg = avgOf(c.id, 'mal_delta')
         if (last != null) { raw.mal_delta = m.raw - last; if (dAvg != null) parts.mal = { score: score((raw.mal_delta + 1) / (dAvg + 1)), label: `+${raw.mal_delta} favourites` } } }
     }
-    if (YT_KEY && i % 12 === hour % 12) {
+    if (YT_KEY && i % 150 === (hour * 3 + chunk) % 150) {
       const y = await youtube(c)
       if (y) { raw.youtube = y.raw; const b = avgOf(c.id, 'youtube'); if (b != null) parts.youtube = { score: score((y.raw + 1) / (b + 1)), label: `${y.raw} videos today` } }
     }
@@ -207,7 +218,7 @@ Deno.serve(async req => {
   const { data: cfg } = await db.from('app_config').select('value').eq('key', 'cron_secret').single()
   if (!cfg || req.headers.get('x-cron-secret') !== cfg.value) return new Response('forbidden', { status: 403 })
   const body = await req.json().catch(() => ({}))
-  if (body.mode === 'seed') return Response.json(await seed())
+  if (body.mode === 'seed') return Response.json(await seed(body.count))
   // answer the scheduler straight away and keep scanning in the background
   // @ts-ignore EdgeRuntime is provided by Supabase
   EdgeRuntime.waitUntil(collect(body.chunk))
