@@ -241,7 +241,8 @@ async function collect(chunkArg?: number) {
 
     let sum = 0, wsum = 0
     for (const [k, v] of Object.entries(parts)) { sum += v.score * WEIGHTS[k]; wsum += WEIGHTS[k] }
-    const hype = wsum ? +(sum / wsum).toFixed(3) : 0
+    // damp characters with little data so one signal (e.g. a new episode) can't max them out
+    const hype = wsum ? +(sum / Math.max(wsum, 0.6)).toFixed(3) : 0
 
     const delta = hype - Number(c.hype)
     if (Math.abs(delta) >= 0.15) {

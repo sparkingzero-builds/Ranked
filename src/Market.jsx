@@ -55,6 +55,8 @@ function MarketLive({ me, friends }) {
   useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
 
   const byId = useMemo(() => Object.fromEntries((chars || []).map(c => [c.id, c])), [chars])
+  // pin the first stock once so the panel doesn't jump when the list re-sorts on each tick
+  useEffect(() => { if (chars?.length && selId == null) setSelId([...chars].sort((x, y) => y.hype - x.hype)[0].id) }, [chars])
   if (!chars || !wallet) return <div className="loading">Opening the market…</div>
   if (!chars.length) return <div className="card pad muted">The market hasn't opened yet. Stocks are being listed.</div>
 
