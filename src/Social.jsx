@@ -42,7 +42,7 @@ export function Bell({ me }) {
   return (
     <div className="bell" onClick={toggle} title="Notifications">🔔{unread > 0 && <span className="dot">{unread}</span>}
       {open && <div className="bellpop" onClick={e => e.stopPropagation()}>
-        {items.map(n => <div key={n.id} className={n.read ? '' : 'unread'}>{n.text}<small>{ago(n.created_at)} ago</small></div>)}
+        {items.map(n => <div key={n.id} className={n.read ? '' : 'unread'}>{n.text}<small>{ago(n.created_at) === 'just now' ? 'just now' : `${ago(n.created_at)} ago`}</small></div>)}
         {!items.length && <div>No notifications yet. Set a price alert or limit order on the Market.</div>}
       </div>}
     </div>

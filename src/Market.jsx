@@ -345,6 +345,7 @@ function OrdersBox({ c }) {
     sb.from('alerts').select('*').eq('char_id', c.id).is('triggered_at', null).order('created_at'),
   ]).then(([o, a]) => setMine({ orders: o.data || [], alerts: a.data || [] }))
   useEffect(() => { load(); setMode(null); setPrice((+c.price).toFixed(2)) }, [c.id])
+  useEffect(() => { load() }, [c.updated_at]) // refresh after each tick (fills, triggered alerts)
 
   async function submit() {
     const p = +price; setMsg('')
