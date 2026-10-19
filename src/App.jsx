@@ -1,11 +1,15 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import WatchAlong from './WatchAlong.jsx'
 import Stats from './Stats.jsx'
 import Market from './Market.jsx'
+import Season, { currentSeason } from './Season.jsx'
+import CharRank from './CharRank.jsx'
+import { Bell, Squad, Profile } from './Social.jsx'
+import { useAchievements } from './achievements.js'
 import { renderTopList } from './shareImage.js'
 import { useRankHistory, movement, Move, RankHistory } from './History.jsx'
 import Lobby from './Lobby.jsx'
-import { sb, useSession, ensureProfile, fetchProfiles, useRowSync } from './cloud.js'
+import { sb, useSession, ensureProfile, fetchProfiles, useRowSync, logActivity } from './cloud.js'
 import { fetchUser, fetchList, fetchActivity, searchAnime, trending, title } from './api.js'
 
 const CATS = ['Story', 'Animation', 'Characters', 'Music', 'Peak moments']
@@ -63,16 +67,41 @@ function Main({ me, setMe }) {
   const [ratings, setRatings] = useStored('ranked.ratings', {})
   const [elo, setElo] = useStored('ranked.elo', {})
   const [history, setHistory] = useStored('ranked.history', {})
+  const [extra, setExtra] = useStored('ranked.extra', {})
+  const [profileId, setProfileId] = useState(null)
+  const [toast, setToast] = useState(null)
   useRankHistory(rankings, history, setHistory)
   const synced = useRowSync('user_state', me?.id, [
     { col: 'rankings', value: rankings, set: setRankings },
     { col: 'ratings', value: ratings, set: setRatings },
     { col: 'elo', value: elo, set: setElo },
     { col: 'history', value: history, set: setHistory },
+    { col: 'extra', value: extra, set: setExtra },
   ])
   const [friends, setFriends] = useState([])
   useEffect(() => { if (me) fetchProfiles().then(setFriends) }, [me?.id])
   useEffect(() => { if (me?.anilist_name && me.anilist_name !== username) setUsername(me.anilist_name) }, [me?.id])
+  const prevTop = useRef(undefined)
+  useEffect(() => {
+    const top = rankings['10']?.[0]
+    if (!synced) return
+    if (prevTop.current !== undefined && top && top !== prevTop.current) {
+      const m = list.find(e => e.media.id === top)?.media
+      if (m) logActivity('top1', { title: title(m), cover: m.coverImage.medium })
+    }
+    prevTop.current = top ?? null
+  }, [rankings['10']?.[0], synced])
+
+  const season = currentSeason()
+  const achLocal = useMemo(() => {
+    const seen = list.filter(e => e.status !== 'PLANNING')
+    const hours = seen.reduce((a, e) => a + (e.status === 'COMPLETED' ? (e.media.episodes || e.progress) : e.progress) * (e.media.duration || 24), 0) / 60
+    return { hours, completed: list.filter(e => e.status === 'COMPLETED').length, ratings: Object.keys(ratings).length,
+      top10: (rankings['10'] || []).length, charTop: (extra.chars || []).length, season: (extra.season?.[`${season.season}-${season.year}`] || []).length }
+  }, [list, ratings, rankings, extra])
+  useAchievements(me, achLocal, a => { setToast(a); setTimeout(() => setToast(null), 4500) }, [me?.id, page, list.length, achLocal.ratings, achLocal.top10, achLocal.charTop, achLocal.season])
+  const openProfile = id => { setProfileId(id); setPage('profile') }
+
   async function changeAnilist(name) {
     setUsername(name)
     if (me) { const { data } = await sb.from('profiles').update({ anilist_name: name }).eq('id', me.id).select().single(); if (data) setMe(data) }
@@ -99,18 +128,19 @@ function Main({ me, setMe }) {
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
   }
 
-  const ctx = { list, media, user, activity, rankings, setRankings, ratings, overall, openRating: setRating, elo, setElo, history, me, friends }
+  const ctx = { list, media, user, activity, rankings, setRankings, ratings, overall, openRating: setRating, elo, setElo, history, me, friends, extra, setExtra, openProfile }
 
   return (
     <>
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
         <div className="links">
-          {[['home', 'Home'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['mates', 'Mates'], ['watch', 'Watch-Along'], ['stats', 'Stats'], ['market', 'Market'], ['browse', 'Browse']].map(([k, l]) =>
+          {[['home', 'Home'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['mates', 'Mates'], ['squad', 'Squad'], ['watch', 'Watch-Along'], ['stats', 'Stats'], ['market', 'Market'], ['browse', 'Browse']].map(([k, l]) =>
             <button key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)}>{l}</button>)}
         </div>
         <UserBox user={user} onChange={changeAnilist} />
-        {me && <div className="mebox" title="Sign out" onClick={() => confirm('Sign out?') && sb.auth.signOut()}><b>{me.username}</b><span>{synced ? 'synced' : 'syncing…'}</span></div>}
+        <Bell me={me} />
+        {me && <div className="mebox" title="Your profile" onClick={() => openProfile(me.id)}><b>{me.username}</b><span>{synced ? 'synced' : 'syncing…'}</span></div>}
       </nav>
       <main className="wrap">
         {err && <div className="card error">Couldn't load AniList user: {err}</div>}
@@ -123,11 +153,21 @@ function Main({ me, setMe }) {
           {page === 'watch' && <WatchAlong {...ctx} />}
           {page === 'stats' && <Stats {...ctx} />}
           {page === 'market' && <Market me={me} friends={friends} />}
+          {page === 'season' && <Season {...ctx} />}
+          {page === 'squad' && <Squad me={me} friends={friends} openProfile={openProfile} />}
+          {page === 'profile' && profileId && <Profile key={profileId} id={profileId} me={me} myList={list} friends={friends} />}
+          {page === 'profile' && profileId === me?.id && <div className="center"><button className="pill ghost" onClick={() => confirm('Sign out?') && sb.auth.signOut()}>Sign out</button></div>}
           {page === 'browse' && <Browse openRating={setRating} />}
         </>}
       </main>
+      {toast && <div className="toast"><span>{toast.icon}</span><div><b>Achievement unlocked</b>{toast.label}: {toast.desc}</div></div>}
       {rating && <RatingModal m={rating} value={ratings[rating.id] || {}} onClose={() => setRating(null)}
-        onSave={v => { setRatings({ ...ratings, [rating.id]: v }); setRating(null) }} />}
+        onSave={v => {
+          setRatings({ ...ratings, [rating.id]: v })
+          const score = (CATS.reduce((a, c) => a + (v[c] ?? 0), 0) / CATS.length).toFixed(1)
+          logActivity('rate', { title: title(rating), cover: rating.coverImage.medium, score })
+          setRating(null)
+        }} />}
     </>
   )
 }
@@ -218,7 +258,18 @@ function ListPage({ list, overall, openRating }) {
   )
 }
 
-function Rankings({ list, media, rankings, setRankings, overall, openRating, user, history }) {
+function Rankings(props) {
+  const [kind, setKind] = useState('anime')
+  return <>
+    <div className="tabs kindtabs">
+      <button className={kind === 'anime' ? 'on' : ''} onClick={() => setKind('anime')}>Anime</button>
+      <button className={kind === 'chars' ? 'on' : ''} onClick={() => setKind('chars')}>Characters</button>
+    </div>
+    {kind === 'anime' ? <AnimeRankings {...props} /> : <CharRank extra={props.extra} setExtra={props.setExtra} />}
+  </>
+}
+
+function AnimeRankings({ list, media, rankings, setRankings, overall, openRating, user, history }) {
   const [showHist, setShowHist] = useState(false)
   const [size, setSize] = useState(10)
   const [share, setShare] = useState(false)

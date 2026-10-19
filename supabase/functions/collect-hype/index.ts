@@ -71,6 +71,35 @@ async function seed(count = 50) {
   return { added: rows.length, total: have.size + rows.length }
 }
 
+// Character IPOs: main characters from the hottest airing shows join the market at a discount
+async function ipo(count = 5) {
+  const { data: existing } = await db.from('characters').select('id, sym')
+  const have = new Set((existing || []).map(c => c.id)), taken = new Set<string>((existing || []).map(c => c.sym))
+  const d = await anilist(`{ Page(perPage:20){ media(type:ANIME, status:RELEASING, sort:TRENDING_DESC){ title { romaji english } coverImage { color }
+    characters(role:MAIN, perPage:4, sort:FAVOURITES_DESC){ nodes { id name { full } image { large } favourites } } } } }`)
+  const cands: any[] = []
+  for (const m of d?.data?.Page?.media || []) for (const c of m.characters.nodes)
+    if (!have.has(c.id) && c.favourites >= 300 && !cands.some(x => x.c.id === c.id)) cands.push({ c, m })
+  const pick = cands.sort((a, b) => b.c.favourites - a.c.favourites).slice(0, count)
+  const rows = pick.map(({ c, m }) => {
+    const parts = c.name.full.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
+    const cands2 = [parts[parts.length - 1], parts[0], parts.join('')].filter(Boolean).map((p: string) => p.slice(0, 5).toUpperCase())
+    let sym = cands2.find((x: string) => x.length >= 2 && !taken.has(x))
+    if (!sym) { let n = 2; while (taken.has((cands2[0] || 'IPO') + n)) n++; sym = (cands2[0] || 'IPO') + n }
+    taken.add(sym)
+    const p0 = Math.round(2000 + Math.sqrt(c.favourites) * 30), base = +(15 + Math.sqrt(c.favourites) / 2.2).toFixed(2)
+    const title = m.title.english || m.title.romaji
+    return { id: c.id, name: c.name.full, sym, image: c.image.large, favourites: c.favourites, media_title: title, color: m.coverImage.color,
+      p0, base, power: p0, price: +(base * 0.8).toFixed(2), price_24h: +(base * 0.8).toFixed(2), ipo_at: new Date().toISOString() }
+  })
+  if (rows.length) {
+    await db.from('characters').insert(rows)
+    await db.from('news').insert(rows.map(r => ({ char_id: r.id, up: true, source: 'trending',
+      text: `IPO: $${r.sym} (${r.name.toUpperCase()}) LISTS TODAY from ${r.media_title}. Launch price ${r.price}` })))
+  }
+  return { listed: rows.map(r => r.sym) }
+}
+
 async function wikiTitle(c: any) {
   const q = encodeURIComponent(`${c.name} ${c.media_title || ''} character`)
   const r = await json(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${q}&srlimit=1&format=json`)
@@ -127,20 +156,21 @@ const NEWS: Record<string, [string, string]> = {
   mal: ['MAL fans rally behind {N}: favourites {X}', 'MAL interest in {N} stalls {X}'],
 }
 
-// Runs every 20 minutes; each run handles a third of the market so every character is scanned hourly.
+// Runs every 10 minutes; each run handles a sixth of the market so every character is scanned hourly.
+const CHUNKS = 6
 async function collect(chunkArg?: number) {
   const { data: all } = await db.from('characters').select('*').order('id')
   if (!all?.length) return { error: 'no characters, run seed first' }
   const now = new Date(), hour = now.getUTCHours()
-  const chunk = chunkArg ?? Math.floor(now.getUTCMinutes() / 20) % 3
-  const chars = all.map((c, i) => ({ ...c, i })).filter(c => c.i % 3 === chunk)
+  const chunk = chunkArg ?? Math.floor(now.getUTCMinutes() / 10) % CHUNKS
+  const chars = all.map((c, i) => ({ ...c, i })).filter(c => c.i % CHUNKS === chunk)
 
   // AniList: favourites + show trending/airing, one batched call
   const ids = chars.map((c: any) => c.id)
   const alBy: Record<number, any> = {}
   for (let k = 0; k < ids.length; k += 50) {
     const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
-      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
+      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { id status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
     for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
   }
 
@@ -170,7 +200,7 @@ async function collect(chunkArg?: number) {
       if (m) { raw.mal = m.raw; const last = lastOf(c.id, 'mal'), dAvg = avgOf(c.id, 'mal_delta')
         if (last != null) { raw.mal_delta = m.raw - last; if (dAvg != null) parts.mal = { score: score((raw.mal_delta + 1) / (dAvg + 1)), label: `+${raw.mal_delta} favourites` } } }
     }
-    if (YT_KEY && i % 150 === (hour * 3 + chunk) % 150) {
+    if (YT_KEY && i % 720 === (hour * CHUNKS + chunk) % 720) {
       const y = await youtube(c)
       if (y) { raw.youtube = y.raw; const b = avgOf(c.id, 'youtube'); if (b != null) parts.youtube = { score: score((y.raw + 1) / (b + 1)), label: `${y.raw} videos today` } }
     }
@@ -191,6 +221,14 @@ async function collect(chunkArg?: number) {
         const showName = live ? (live.title.english || live.title.romaji) : ''
         // weekly show: under 5 days until the next episode means one dropped in the last ~2 days
         const fresh = live && live.nextAiringEpisode.timeUntilAiring > 5 * 86400
+        // Episode day: first scan after a new episode starts a 24h boost (applied in market_tick) and a headline
+        if (fresh) {
+          const ep = live.nextAiringEpisode.episode - 1, key = `${live.id}-${ep}`
+          if (c.event_key !== key) {
+            await db.from('characters').update({ event_key: key, event_label: `${showName} ep ${ep}`, event_until: new Date(Date.now() + 86400000).toISOString() }).eq('id', c.id)
+            await db.from('news').insert({ char_id: c.id, up: true, source: 'airing', text: `EPISODE DAY: ${showName.toUpperCase()} EP ${ep} IS OUT. $${c.sym} gets a 24h hype boost` })
+          }
+        }
         parts.airing = live
           ? { score: fresh ? 0.6 : 0.25, label: fresh ? `${showName} ep ${live.nextAiringEpisode.episode - 1} just dropped` : `${showName} airing, ep ${live.nextAiringEpisode.episode} next` }
           : { score: 0, label: 'not airing' }
@@ -217,7 +255,7 @@ async function collect(chunkArg?: number) {
     await db.from('hype_history').insert({ char_id: c.id, raw })
     results.push({ sym: c.sym, hype, sources: Object.keys(raw) })
   }
-  for (let k = 0; k < chars.length; k += 4) await Promise.all(chars.slice(k, k + 4).map(c => one(c).catch(e => console.error(c.sym, e))))
+  for (let k = 0; k < chars.length; k += 6) await Promise.all(chars.slice(k, k + 6).map(c => one(c).catch(e => console.error(c.sym, e))))
   console.log(`chunk ${chunk}: updated ${results.length}`)
   return { chunk, updated: results.length, youtube: !!YT_KEY, results }
 }
@@ -227,6 +265,7 @@ Deno.serve(async req => {
   if (!cfg || req.headers.get('x-cron-secret') !== cfg.value) return new Response('forbidden', { status: 403 })
   const body = await req.json().catch(() => ({}))
   if (body.mode === 'seed') return Response.json(await seed(body.count))
+  if (body.mode === 'ipo') return Response.json(await ipo(body.count))
   // answer the scheduler straight away and keep scanning in the background
   // @ts-ignore EdgeRuntime is provided by Supabase
   EdgeRuntime.waitUntil(collect(body.chunk))

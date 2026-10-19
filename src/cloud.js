@@ -75,3 +75,9 @@ export function useRowSync(table, userId, fields) {
 }
 
 const isEmpty = v => v == null || (Array.isArray(v) ? !v.length : typeof v === 'object' && Object.values(v).every(isEmpty))
+
+// Squad feed entry for the signed-in user (no-op offline)
+export function logActivity(kind, payload) {
+  if (!sb) return
+  sb.from('activity').insert({ kind, payload }).then(() => {})
+}

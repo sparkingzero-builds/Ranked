@@ -76,6 +76,7 @@ function MarketLive({ me, friends }) {
 
   const sorters = {
     hype: (a, b) => b.hype - a.hype,
+    events: (a, b) => eventScore(b) - eventScore(a) || b.hype - a.hype,
     gap: (a, b) => powerGap(b) - powerGap(a),
     gain: (a, b) => change24(b) - change24(a),
     loss: (a, b) => change24(a) - change24(b),
@@ -108,7 +109,7 @@ function MarketLive({ me, friends }) {
           <div className="row gap mfilter">
             <input className="search" placeholder="Search ticker or name…" value={q} onChange={e => setQ(e.target.value)} />
             <select className="search msort" value={sort} onChange={e => setSort(e.target.value)}>
-              <option value="hype">Most hyped</option><option value="gap">Biggest power gap</option>
+              <option value="hype">Most hyped</option><option value="events">IPOs &amp; episode days</option><option value="gap">Biggest power gap</option>
               <option value="gain">Top gainers 24h</option><option value="loss">Top losers 24h</option><option value="price">Highest price</option>
             </select>
           </div>
@@ -118,7 +119,7 @@ function MarketLive({ me, friends }) {
               return (
                 <div key={c.id} className={`srow ${sel === c ? 'sel' : ''}`} onClick={() => setSelId(c.id)}>
                   <img src={c.image} alt="" />
-                  <div className="sname"><b>${c.sym}</b><span>{c.name}</span></div>
+                  <div className="sname"><b>${c.sym}<Badges c={c} /></b><span>{c.name}</span></div>
                   <Spark pts={sparks[c.id]} up={ch >= 0} />
                   <div className="sprice"><b>{coins(c.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
                   <div className={`sgap ${gap > 0.03 ? 'hot' : gap < -0.03 ? 'cold' : ''}`} title="Power vs price: positive means price hasn't caught up yet">
@@ -132,6 +133,7 @@ function MarketLive({ me, friends }) {
         <aside><StockPanel c={sel} wallet={wallet} trade={trade} /></aside>
       </div>}
 
+      {view === 'portfolio' && <OpenOrders byId={byId} />}
       {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} />}
       {view === 'board' && <Leaderboard byId={byId} friends={friends} me={me} />}
 
@@ -223,6 +225,7 @@ function StockPanel({ c, wallet, trade }) {
         <img src={c.image} alt="" />
         <div className="grow">
           <div className="ssym">${c.sym}</div>
+          <Badges c={c} big />
           <div className="sfull">{c.name}</div>
           <div className="muted small">{c.media_title}</div>
           <div className="sbig">{coins(c.price)} <span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
@@ -237,6 +240,7 @@ function StockPanel({ c, wallet, trade }) {
         <div><span>Power gap</span><b className={gap >= 0 ? 'up' : 'down'}>{gap >= 0 ? '+' : ''}{(gap * 100).toFixed(1)}%</b></div>
       </div>
       <WhyPanel c={c} />
+      <OrdersBox c={c} />
       <div className="tradebox">
         <div className="row gap">
           <button className="pill ghost" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
@@ -311,6 +315,88 @@ function Leaderboard({ byId, friends, me }) {
           <div className="bworth"><b>{coins(r.worth)}</b><span className={r.worth >= START_CASH ? 'up' : 'down'}>{pct(r.worth / START_CASH - 1)}</span></div>
         </div>
       ))}
+    </div>
+  )
+}
+
+const isIpo = c => c.ipo_at && Date.now() - new Date(c.ipo_at) < 48 * 3600000
+const isEvent = c => c.event_until && new Date(c.event_until) > Date.now()
+const eventScore = c => (isIpo(c) ? 2 : 0) + (isEvent(c) ? 1 : 0)
+
+function Badges({ c, big }) {
+  return <>
+    {isIpo(c) && <span className={`badge ipo ${big ? 'big' : ''}`} title="New listing: +15% hype for 48h">IPO</span>}
+    {isEvent(c) && <span className={`badge ep ${big ? 'big' : ''}`} title={`Episode day: ${c.event_label}`}>🎬 {big ? c.event_label : 'EP DAY'}</span>}
+  </>
+}
+
+// Limit orders fill automatically on the next 5-minute tick that crosses your price; alerts notify you.
+function OrdersBox({ c }) {
+  const [mode, setMode] = useState(null)
+  const [side, setSide] = useState('buy')
+  const [qty, setQty] = useState(1)
+  const [price, setPrice] = useState('')
+  const [mine, setMine] = useState({ orders: [], alerts: [] })
+  const [msg, setMsg] = useState('')
+  const load = () => Promise.all([
+    sb.from('orders').select('*').eq('char_id', c.id).eq('status', 'open').order('created_at'),
+    sb.from('alerts').select('*').eq('char_id', c.id).is('triggered_at', null).order('created_at'),
+  ]).then(([o, a]) => setMine({ orders: o.data || [], alerts: a.data || [] }))
+  useEffect(() => { load(); setMode(null); setPrice((+c.price).toFixed(2)) }, [c.id])
+
+  async function submit() {
+    const p = +price; setMsg('')
+    if (!(p > 0)) return setMsg('Enter a price')
+    const { error } = mode === 'order'
+      ? await sb.from('orders').insert({ char_id: c.id, qty: side === 'buy' ? qty : -qty, limit_price: p })
+      : await sb.from('alerts').insert({ char_id: c.id, above: side === 'buy', price: p })
+    if (error) return setMsg(error.message)
+    setMode(null); load()
+  }
+  return (
+    <div className="orders">
+      <div className="row gap">
+        <button className={`pill ghost ${mode === 'order' ? 'act' : ''}`} onClick={() => { setMode(mode === 'order' ? null : 'order'); setSide('buy') }}>Limit order</button>
+        <button className={`pill ghost ${mode === 'alert' ? 'act' : ''}`} onClick={() => { setMode(mode === 'alert' ? null : 'alert'); setSide('buy') }}>🔔 Alert</button>
+      </div>
+      {mode && <div className="oform">
+        <div className="tabs">
+          <button className={side === 'buy' ? 'on' : ''} onClick={() => setSide('buy')}>{mode === 'order' ? 'Buy at or below' : 'Rises above'}</button>
+          <button className={side === 'sell' ? 'on' : ''} onClick={() => setSide('sell')}>{mode === 'order' ? 'Sell at or above' : 'Falls below'}</button>
+        </div>
+        <div className="row gap">
+          {mode === 'order' && <input className="search qty" type="number" min="1" value={qty} onChange={e => setQty(Math.max(1, Math.floor(+e.target.value) || 1))} title="Shares" />}
+          <input className="search qty wide" type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} title="Price" />
+          <button className="pill" onClick={submit}>Set</button>
+        </div>
+        {msg && <div className="error small">{msg}</div>}
+      </div>}
+      {mine.orders.map(o => <div key={o.id} className="oline">
+        <span className={o.qty > 0 ? 'up' : 'down'}>{o.qty > 0 ? 'BUY' : 'SELL'} {Math.abs(o.qty)}</span> @ {coins(o.limit_price)}
+        <button className="x" onClick={async () => { await sb.rpc('cancel_order', { p_id: o.id }); load() }}>×</button></div>)}
+      {mine.alerts.map(a => <div key={a.id} className="oline">🔔 {a.above ? 'above' : 'below'} {coins(a.price)}
+        <button className="x" onClick={async () => { await sb.from('alerts').delete().eq('id', a.id); load() }}>×</button></div>)}
+    </div>
+  )
+}
+
+function OpenOrders({ byId }) {
+  const [orders, setOrders] = useState([])
+  const load = () => sb.from('orders').select('*').order('created_at', { ascending: false }).limit(30).then(({ data }) => setOrders(data || []))
+  useEffect(() => { load() }, [])
+  if (!orders.length) return null
+  return (
+    <div className="card pad openorders">
+      <h3 className="m0">Orders</h3>
+      {orders.map(o => {
+        const c = byId[o.char_id]
+        return <div key={o.id} className="mini">
+          <b className={o.qty > 0 ? 'up' : 'down'}>{o.qty > 0 ? 'BUY' : 'SELL'}</b>
+          <span className="grow">${c?.sym} × {Math.abs(o.qty)} @ {coins(o.limit_price)}</span>
+          <span className={`ostatus ${o.status}`}>{o.status}{o.status === 'filled' && ` @ ${coins(o.fill_price)}`}</span>
+          {o.status === 'open' && <button className="x" onClick={async () => { await sb.rpc('cancel_order', { p_id: o.id }); load() }}>×</button>}
+        </div>
+      })}
     </div>
   )
 }
