@@ -138,8 +138,9 @@ begin
   end loop;
 
   -- limit orders
-  for o in select o.*, c.price as now_price, c.sym from orders o join characters c on c.id = o.char_id
-           where o.status = 'open' and ((o.qty > 0 and c.price <= o.limit_price) or (o.qty < 0 and c.price >= o.limit_price)) loop
+  -- (aliases must not reuse the loop variable names c / o above, or plpgsql calls them ambiguous)
+  for o in select od.*, ch.price as now_price, ch.sym from orders od join characters ch on ch.id = od.char_id
+           where od.status = 'open' and ((od.qty > 0 and ch.price <= od.limit_price) or (od.qty < 0 and ch.price >= od.limit_price)) loop
     begin
       perform do_trade(o.user_id, o.char_id, o.qty);
       update orders set status = 'filled', filled_at = now(), fill_price = o.now_price where id = o.id;
@@ -153,10 +154,10 @@ begin
 
   -- price alerts
   with t as (
-    update alerts a set triggered_at = now() from characters c
-    where c.id = a.char_id and a.triggered_at is null
-      and ((a.above and c.price >= a.price) or (not a.above and c.price <= a.price))
-    returning a.user_id, c.sym, a.above, a.price, c.price as now_price)
+    update alerts al set triggered_at = now() from characters ch
+    where ch.id = al.char_id and al.triggered_at is null
+      and ((al.above and ch.price >= al.price) or (not al.above and ch.price <= al.price))
+    returning al.user_id, ch.sym, al.above, al.price, ch.price as now_price)
   insert into notifications (user_id, text)
     select user_id, format('🔔 $%s %s %s (now %s)', sym, case when above then 'rose above' else 'fell below' end, round(price, 2), round(now_price, 2)) from t;
 
