@@ -1,161 +1,179 @@
-import { useEffect, useMemo, useState } from 'react'
-import { fetchTopCharacters, title } from './api.js'
-import { useStored } from './App.jsx'
-import { sb, useRowSync } from './cloud.js'
-import { stock, symbolFor, change, powerGap, series, news, currentTick, tickTime, coins, pct, START_CASH } from './market.js'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { sb } from './cloud.js'
+import { coins, pct, change24, powerGap, SOURCES, START_CASH, TICK_MS } from './market.js'
 
-const RANGES = [['1H', 60], ['24H', 1440], ['7D', 10080], ['ALL', Infinity]]
+const RANGES = [['6H', 6], ['24H', 24], ['7D', 168], ['30D', 720]]
+const ago = t => {
+  const m = Math.round((Date.now() - new Date(t)) / 60000)
+  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`
+}
 
-function useCharacters() {
-  const [chars, setChars] = useState(() => {
-    try { const c = JSON.parse(localStorage.getItem('ranked.chars')); if (c && Date.now() - c.at < 86400000) return c.list } catch {}
-    return null
-  })
+// Live market state from Supabase, refreshed on realtime changes (debounced: a tick updates 50 rows at once)
+function useMarket(me) {
+  const [chars, setChars] = useState(null)
+  const [sparks, setSparks] = useState({})
+  const [news, setNews] = useState([])
+  const [wallet, setWallet] = useState(null)
+  const timer = useRef()
+
+  async function load() {
+    const [c, s, n, w] = await Promise.all([
+      sb.from('characters').select('*'),
+      sb.from('price_hourly').select('char_id, t, price').order('t'),
+      sb.from('news').select('*').order('created_at', { ascending: false }).limit(40),
+      sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(),
+    ])
+    setChars(c.data || [])
+    const sp = {}; (s.data || []).forEach(r => (sp[r.char_id] ||= []).push(Number(r.price))); setSparks(sp)
+    setNews(n.data || [])
+    setWallet(w.data || { cash: START_CASH, holdings: {}, trades: [] })
+  }
   useEffect(() => {
-    if (chars) return
-    fetchTopCharacters().then(list => {
-      setChars(list)
-      try { localStorage.setItem('ranked.chars', JSON.stringify({ at: Date.now(), list })) } catch {}
-    }).catch(() => {})
-  }, [])
-  return chars
+    load()
+    const ch = sb.channel('market-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'characters' }, () => { clearTimeout(timer.current); timer.current = setTimeout(load, 1500) })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'news' }, () => { clearTimeout(timer.current); timer.current = setTimeout(load, 1500) })
+      .subscribe()
+    return () => { sb.removeChannel(ch); clearTimeout(timer.current) }
+  }, [me.id])
+  return { chars, sparks, news, wallet, setWallet }
 }
 
 export default function Market({ me, friends = [] }) {
-  const chars = useCharacters()
-  const [tick, setTick] = useState(currentTick())
-  const [wallet, setWallet] = useStored('ranked.wallet', { cash: START_CASH, holdings: {}, trades: [] })
-  useRowSync('wallets', me?.id, [
-    { col: 'cash', value: wallet.cash, set: v => setWallet(w => ({ ...w, cash: Number(v) })) },
-    { col: 'holdings', value: wallet.holdings, set: v => setWallet(w => ({ ...w, holdings: v })) },
-    { col: 'trades', value: wallet.trades, set: v => setWallet(w => ({ ...w, trades: v })) },
-  ])
+  if (!sb || !me) return <div className="card pad muted">The market runs online. Sign in to trade with the squad.</div>
+  return <MarketLive me={me} friends={friends} />
+}
+
+function MarketLive({ me, friends }) {
+  const { chars, sparks, news, wallet, setWallet } = useMarket(me)
   const [selId, setSelId] = useState(null)
   const [view, setView] = useState('market')
-  const [sort, setSort] = useState('gap')
+  const [sort, setSort] = useState('hype')
   const [q, setQ] = useState('')
+  const [now, setNow] = useState(Date.now())
+  const [err, setErr] = useState('')
+  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
 
-  useEffect(() => {
-    const i = setInterval(() => setTick(currentTick()), 2000)
-    return () => clearInterval(i)
-  }, [])
+  const byId = useMemo(() => Object.fromEntries((chars || []).map(c => [c.id, c])), [chars])
+  if (!chars || !wallet) return <div className="loading">Opening the market…</div>
+  if (!chars.length) return <div className="card pad muted">The market hasn't opened yet. Stocks are being listed.</div>
 
-  const stocks = useMemo(() => {
-    if (!chars) return []
-    const taken = new Set()
-    return chars.map(c => { const s = stock(c); s.sym ||= symbolFor(c.name.full, taken); return s })
-  }, [chars, tick])
-
-  if (!chars) return <div className="loading">Opening the market…</div>
-  const byId = Object.fromEntries(stocks.map(s => [s.c.id, s]))
-  const sel = byId[selId] || stocks[0]
-  const holdingsValue = Object.entries(wallet.holdings).reduce((a, [id, h]) => a + (byId[id]?.price || 0) * h.qty, 0)
-  const worth = wallet.cash + holdingsValue
+  const sel = byId[selId] || chars[0]
+  const holdingsValue = Object.entries(wallet.holdings || {}).reduce((a, [id, h]) => a + (Number(byId[id]?.price) || 0) * h.qty, 0)
+  const worth = Number(wallet.cash) + holdingsValue
   const pnl = worth - START_CASH
-  const feed = news(stocks)
-  const secsLeft = Math.ceil((tickTime(tick + 1) - Date.now()) / 1000)
+  const secsLeft = Math.ceil((TICK_MS - (now % TICK_MS)) / 1000)
 
-  function trade(s, qty) {
-    if (!qty) return
-    const cost = s.price * qty
-    const h = wallet.holdings[s.c.id] || { qty: 0, avg: 0 }
-    if (qty > 0 && cost > wallet.cash) return
-    if (qty < 0 && -qty > h.qty) return
-    const nq = h.qty + qty
-    const holdings = { ...wallet.holdings }
-    if (nq === 0) delete holdings[s.c.id]
-    else holdings[s.c.id] = { qty: nq, avg: qty > 0 ? (h.avg * h.qty + cost) / nq : h.avg }
-    setWallet({ cash: wallet.cash - cost, holdings, trades: [{ id: s.c.id, sym: s.sym, qty, price: s.price, at: Date.now() }, ...wallet.trades].slice(0, 100) })
+  async function trade(c, qty) {
+    setErr('')
+    const { data, error } = await sb.rpc('trade', { p_char: c.id, p_qty: qty })
+    if (error) setErr(error.message); else setWallet(data)
+  }
+  async function reset() {
+    if (!confirm('Reset your wallet to 10,000 coins?')) return
+    const { data } = await sb.rpc('reset_wallet'); if (data) setWallet(data)
   }
 
   const sorters = {
+    hype: (a, b) => b.hype - a.hype,
     gap: (a, b) => powerGap(b) - powerGap(a),
-    gain: (a, b) => change(b, 1440) - change(a, 1440),
-    loss: (a, b) => change(a, 1440) - change(b, 1440),
+    gain: (a, b) => change24(b) - change24(a),
+    loss: (a, b) => change24(a) - change24(b),
     price: (a, b) => b.price - a.price,
   }
-  const list = stocks.filter(s => (s.sym + s.c.name.full).toLowerCase().includes(q.toLowerCase())).sort(sorters[sort])
+  const list = chars.filter(c => (c.sym + c.name).toLowerCase().includes(q.toLowerCase())).sort(sorters[sort])
+  const tape = news.length ? news : chars.slice().sort((a, b) => Math.abs(change24(b)) - Math.abs(change24(a))).slice(0, 6)
+    .map(c => ({ id: c.id, up: change24(c) >= 0, text: `$${c.sym} ${change24(c) >= 0 ? 'UP' : 'DOWN'} ${Math.abs(change24(c) * 100).toFixed(1)}% TODAY` }))
 
   return (
     <div className="market">
       <div className="tape"><div className="tapein">
-        {[...feed, ...feed].map((n, i) => <span key={i} className={n.up ? 'up' : 'down'}>{n.up ? '▲' : '▼'} {n.text}</span>)}
+        {[...tape, ...tape].map((n, i) => <span key={i} className={n.up ? 'up' : 'down'}>{n.up ? '▲' : '▼'} {n.text}</span>)}
       </div></div>
 
       <div className="mhud">
         <div className="hudbox"><span>Net worth</span><b>{coins(worth)}</b></div>
         <div className="hudbox"><span>P/L</span><b className={pnl >= 0 ? 'up' : 'down'}>{pnl >= 0 ? '+' : ''}{coins(pnl)}</b></div>
         <div className="hudbox"><span>Cash</span><b>{coins(wallet.cash)}</b></div>
-        <div className="hudbox"><span>Next tick</span><b>{secsLeft}s</b></div>
+        <div className="hudbox"><span>Next tick</span><b>{Math.floor(secsLeft / 60)}:{String(secsLeft % 60).padStart(2, '0')}</b></div>
         <div className="tabs">
-          <button className={view === 'market' ? 'on' : ''} onClick={() => setView('market')}>Market</button>
-          <button className={view === 'portfolio' ? 'on' : ''} onClick={() => setView('portfolio')}>Portfolio</button>
-          <button className={view === 'news' ? 'on' : ''} onClick={() => setView('news')}>News</button>
-          {sb && <button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}>Leaderboard</button>}
+          {[['market', 'Market'], ['portfolio', 'Portfolio'], ['news', 'News'], ['board', 'Leaderboard']].map(([k, l]) =>
+            <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}
         </div>
       </div>
+      {err && <div className="error">{err}</div>}
 
       {view === 'market' && <div className="mgrid">
         <section>
           <div className="row gap mfilter">
             <input className="search" placeholder="Search ticker or name…" value={q} onChange={e => setQ(e.target.value)} />
             <select className="search msort" value={sort} onChange={e => setSort(e.target.value)}>
-              <option value="gap">Biggest power gap</option><option value="gain">Top gainers 24h</option>
-              <option value="loss">Top losers 24h</option><option value="price">Highest price</option>
+              <option value="hype">Most hyped</option><option value="gap">Biggest power gap</option>
+              <option value="gain">Top gainers 24h</option><option value="loss">Top losers 24h</option><option value="price">Highest price</option>
             </select>
           </div>
           <div className="stocks">
-            {list.map(s => {
-              const ch = change(s, 1440), gap = powerGap(s)
+            {list.map(c => {
+              const ch = change24(c), gap = powerGap(c)
               return (
-                <div key={s.c.id} className={`srow ${sel === s ? 'sel' : ''}`} onClick={() => setSelId(s.c.id)}>
-                  <img src={s.c.image.medium} alt="" />
-                  <div className="sname"><b>${s.sym}</b><span>{s.c.name.full}</span></div>
-                  <Spark s={s} up={ch >= 0} />
-                  <div className="sprice"><b>{coins(s.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
+                <div key={c.id} className={`srow ${sel === c ? 'sel' : ''}`} onClick={() => setSelId(c.id)}>
+                  <img src={c.image} alt="" />
+                  <div className="sname"><b>${c.sym}</b><span>{c.name}</span></div>
+                  <Spark pts={sparks[c.id]} up={ch >= 0} />
+                  <div className="sprice"><b>{coins(c.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
                   <div className={`sgap ${gap > 0.03 ? 'hot' : gap < -0.03 ? 'cold' : ''}`} title="Power vs price: positive means price hasn't caught up yet">
-                    ⚡{Math.round(s.power).toLocaleString()}<span>{gap > 0 ? '+' : ''}{(gap * 100).toFixed(0)}%</span>
+                    <HypeMeter h={c.hype} /><span>{gap > 0 ? '+' : ''}{(gap * 100).toFixed(0)}%</span>
                   </div>
                 </div>
               )
             })}
           </div>
         </section>
-        <aside><StockPanel s={sel} wallet={wallet} trade={trade} /></aside>
+        <aside><StockPanel c={sel} wallet={wallet} trade={trade} /></aside>
       </div>}
 
-      {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={() => {
-        if (confirm('Reset your wallet to 10,000 coins?')) setWallet({ cash: START_CASH, holdings: {}, trades: [] })
-      }} />}
-
+      {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} />}
       {view === 'board' && <Leaderboard byId={byId} friends={friends} me={me} />}
 
       {view === 'news' && <div className="newsfeed">
-        {feed.map(n => (
-          <div key={n.id} className={`nitem ${n.up ? 'up' : 'down'}`} onClick={() => { setSelId(n.s.c.id); setView('market') }}>
-            <img src={n.s.c.image.medium} alt="" />
-            <div className="grow"><div className="nhead">{n.text}</div><div className="muted small">{ago(n.t)} · ${n.s.sym} now {coins(n.s.price)}</div></div>
+        {news.map(n => {
+          const c = byId[n.char_id]
+          return <div key={n.id} className={`nitem ${n.up ? 'up' : 'down'}`} onClick={() => { if (c) { setSelId(c.id); setView('market') } }}>
+            {c && <img src={c.image} alt="" />}
+            <div className="grow"><div className="nhead">{n.text}</div>
+              <div className="muted small">{SOURCES[n.source]?.icon} {SOURCES[n.source]?.label} · {ago(n.created_at)}{c && ` · $${c.sym} now ${coins(c.price)}`}</div></div>
           </div>
-        ))}
+        })}
+        {!news.length && <div className="card pad muted">No headlines yet. They drop when a character's hype jumps.</div>}
       </div>}
     </div>
   )
 }
 
-const ago = t => {
-  const m = currentTick() - t
-  return m < 1 ? 'just now' : m < 60 ? `${m}m ago` : m < 1440 ? `${Math.floor(m / 60)}h ago` : `${Math.floor(m / 1440)}d ago`
+function HypeMeter({ h }) {
+  const v = Number(h)
+  return <span className={`hype-m ${v > 0.15 ? 'hot' : v < -0.1 ? 'cold' : ''}`}>{v > 0.4 ? '🔥🔥' : v > 0.15 ? '🔥' : v < -0.1 ? '🧊' : '·'} {v >= 0 ? '+' : ''}{Math.round(v * 100)}</span>
 }
 
-function Spark({ s, up }) {
-  const pts = series(s, 1440, 40)
-  const min = Math.min(...pts.map(p => p.price)), max = Math.max(...pts.map(p => p.price))
-  const d = pts.map((p, i) => `${(i / (pts.length - 1)) * 100},${30 - ((p.price - min) / (max - min || 1)) * 28}`).join(' ')
+function Spark({ pts, up }) {
+  if (!pts || pts.length < 2) return <svg className="spark" />
+  const min = Math.min(...pts), max = Math.max(...pts)
+  const d = pts.map((p, i) => `${(i / (pts.length - 1)) * 100},${30 - ((p - min) / (max - min || 1)) * 28}`).join(' ')
   return <svg className="spark" viewBox="0 0 100 32" preserveAspectRatio="none"><polyline points={d} fill="none" stroke={up ? '#8cff5a' : '#ff2e63'} strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg>
 }
 
-function Chart({ s, range }) {
-  const pts = series(s, range, 200)
+function Chart({ c, hours }) {
+  const [pts, setPts] = useState(null)
+  useEffect(() => {
+    setPts(null)
+    sb.from('price_ticks').select('t, price, power').eq('char_id', c.id).gte('t', new Date(Date.now() - hours * 3600000).toISOString()).order('t').limit(10000)
+      .then(({ data }) => {
+        const rows = data || [], step = Math.max(1, Math.floor(rows.length / 200))
+        setPts(rows.filter((_, i) => i % step === 0 || i === rows.length - 1).map(r => ({ price: +r.price, target: (c.base * r.power) / c.p0 })))
+      })
+  }, [c.id, hours, c.updated_at])
+  if (!pts) return <div className="chart" />
+  if (pts.length < 2) return <div className="chart nochart muted">Chart builds up as the market ticks every 5 minutes.</div>
   const vals = pts.flatMap(p => [p.price, p.target])
   const min = Math.min(...vals) * 0.98, max = Math.max(...vals) * 1.02
   const W = 600, H = 240
@@ -172,33 +190,53 @@ function Chart({ s, range }) {
   )
 }
 
-function StockPanel({ s, wallet, trade }) {
-  const [range, setRange] = useState(1440)
+function WhyPanel({ c }) {
+  const parts = Object.entries(c.hype_parts || {})
+  return (
+    <div className="why">
+      <div className="whyhead"><span>Why it's moving</span>{c.hype_at && <em>updated {ago(c.hype_at)}</em>}</div>
+      {parts.length ? Object.keys(SOURCES).filter(k => c.hype_parts[k]).map(k => {
+        const p = c.hype_parts[k], s = p.score
+        return <div key={k} className="whyrow" title={SOURCES[k].note}>
+          <span className="wsrc">{SOURCES[k].icon} {SOURCES[k].label}</span>
+          <div className="wbar"><div className={s >= 0 ? 'pos' : 'neg'} style={{ width: `${Math.min(100, Math.abs(s) * 100)}%` }} /></div>
+          <span className="wlbl">{p.label}</span>
+        </div>
+      }) : <div className="muted small">Hype data arrives with the next hourly scan.</div>}
+    </div>
+  )
+}
+
+function StockPanel({ c, wallet, trade }) {
+  const [hours, setHours] = useState(24)
   const [qty, setQty] = useState(1)
-  if (!s) return null
-  const h = wallet.holdings[s.c.id]
-  const ch = change(s, range === Infinity ? s.prices.length : range)
-  const maxBuy = Math.floor(wallet.cash / s.price)
-  const gap = powerGap(s)
+  const [busy, setBusy] = useState(false)
+  if (!c) return null
+  const h = wallet.holdings?.[c.id]
+  const ch = change24(c)
+  const maxBuy = Math.floor(wallet.cash / c.price)
+  const gap = powerGap(c)
+  const go = async n => { setBusy(true); await trade(c, n); setBusy(false) }
   return (
     <div className="spanel">
-      <div className="shead" style={{ '--c': s.c.media.nodes[0]?.coverImage.color || '#ffd60a' }}>
-        <img src={s.c.image.large} alt="" />
+      <div className="shead" style={{ '--c': c.color || '#ffd60a' }}>
+        <img src={c.image} alt="" />
         <div className="grow">
-          <div className="ssym">${s.sym}</div>
-          <div className="sfull">{s.c.name.full}</div>
-          <div className="muted small">{s.c.media.nodes[0] ? title(s.c.media.nodes[0]) : ''}</div>
-          <div className="sbig">{coins(s.price)} <span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
+          <div className="ssym">${c.sym}</div>
+          <div className="sfull">{c.name}</div>
+          <div className="muted small">{c.media_title}</div>
+          <div className="sbig">{coins(c.price)} <span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
         </div>
       </div>
-      <div className="tabs rtabs">{RANGES.map(([l, v]) => <button key={l} className={range === v ? 'on' : ''} onClick={() => setRange(v)}>{l}</button>)}</div>
-      <Chart s={s} range={range} />
+      <div className="tabs rtabs">{RANGES.map(([l, v]) => <button key={l} className={hours === v ? 'on' : ''} onClick={() => setHours(v)}>{l}</button>)}</div>
+      <Chart c={c} hours={hours} />
       <div className="legend2"><span><i className="lp" />Price</span><span><i className="lt" />Power target (price follows this)</span></div>
       <div className="pstats">
-        <div><span>Power level</span><b>⚡{Math.round(s.power).toLocaleString()}</b></div>
+        <div><span>Hype</span><b><HypeMeter h={c.hype} /></b></div>
+        <div><span>Power</span><b>⚡{Math.round(c.power).toLocaleString()}</b></div>
         <div><span>Power gap</span><b className={gap >= 0 ? 'up' : 'down'}>{gap >= 0 ? '+' : ''}{(gap * 100).toFixed(1)}%</b></div>
-        <div><span>Fans</span><b>{s.c.favourites.toLocaleString()}</b></div>
       </div>
+      <WhyPanel c={c} />
       <div className="tradebox">
         <div className="row gap">
           <button className="pill ghost" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
@@ -206,41 +244,41 @@ function StockPanel({ s, wallet, trade }) {
           <button className="pill ghost" onClick={() => setQty(qty + 1)}>+</button>
           <button className="pill ghost" onClick={() => setQty(Math.max(1, maxBuy))}>Max</button>
         </div>
-        <div className="muted small">Total: {coins(s.price * qty)} coins</div>
+        <div className="muted small">Total: {coins(c.price * qty)} coins · price locks when the trade hits the server</div>
         <div className="row gap">
-          <button className="pill buy" disabled={qty > maxBuy} onClick={() => trade(s, qty)}>Buy</button>
-          <button className="pill sell" disabled={!h || qty > h.qty} onClick={() => trade(s, -qty)}>Sell</button>
+          <button className="pill buy" disabled={busy || qty > maxBuy} onClick={() => go(qty)}>Buy</button>
+          <button className="pill sell" disabled={busy || !h || qty > h.qty} onClick={() => go(-qty)}>Sell</button>
         </div>
-        {h && <div className="hold">You own <b>{h.qty}</b> @ {coins(h.avg)} · P/L <b className={s.price >= h.avg ? 'up' : 'down'}>{coins((s.price - h.avg) * h.qty)}</b></div>}
+        {h && <div className="hold">You own <b>{h.qty}</b> @ {coins(h.avg)} · P/L <b className={c.price >= h.avg ? 'up' : 'down'}>{coins((c.price - h.avg) * h.qty)}</b></div>}
       </div>
     </div>
   )
 }
 
 function Portfolio({ wallet, byId, onPick, reset }) {
-  const rows = Object.entries(wallet.holdings).map(([id, h]) => ({ s: byId[id], ...h })).filter(r => r.s)
+  const rows = Object.entries(wallet.holdings || {}).map(([id, h]) => ({ c: byId[id], ...h })).filter(r => r.c)
   return (
     <div className="mgrid">
       <section>
         <h3>Holdings</h3>
         <div className="stocks">
-          {rows.map(({ s, qty, avg }) => {
-            const pl = (s.price - avg) * qty
-            return <div key={s.c.id} className="srow" onClick={() => onPick(s.c.id)}>
-              <img src={s.c.image.medium} alt="" />
-              <div className="sname"><b>${s.sym}</b><span>{qty} shares @ {coins(avg)}</span></div>
-              <div className="sprice"><b>{coins(s.price * qty)}</b><span className={pl >= 0 ? 'up' : 'down'}>{pl >= 0 ? '+' : ''}{coins(pl)} ({pct(s.price / avg - 1)})</span></div>
+          {rows.map(({ c, qty, avg }) => {
+            const pl = (c.price - avg) * qty
+            return <div key={c.id} className="srow" onClick={() => onPick(c.id)}>
+              <img src={c.image} alt="" />
+              <div className="sname"><b>${c.sym}</b><span>{qty} shares @ {coins(avg)}</span></div>
+              <div className="sprice"><b>{coins(c.price * qty)}</b><span className={pl >= 0 ? 'up' : 'down'}>{pl >= 0 ? '+' : ''}{coins(pl)} ({pct(c.price / avg - 1)})</span></div>
             </div>
           })}
-          {!rows.length && <div className="card pad muted">No positions yet. Hunt for big power gaps on the Market tab.</div>}
+          {!rows.length && <div className="card pad muted">No positions yet. Look for high hype and a big power gap on the Market tab.</div>}
         </div>
       </section>
       <aside>
         <h3>Trade log</h3>
         <div className="card pad">
-          {wallet.trades.slice(0, 20).map((t, i) => <div key={i} className="mini">
+          {(wallet.trades || []).slice(0, 20).map((t, i) => <div key={i} className="mini">
             <b className={t.qty > 0 ? 'up' : 'down'}>{t.qty > 0 ? 'BUY' : 'SELL'}</b><span className="grow">${t.sym} × {Math.abs(t.qty)}</span><span className="muted">{coins(t.price)}</span></div>)}
-          {!wallet.trades.length && <span className="muted">No trades yet.</span>}
+          {!wallet.trades?.length && <span className="muted">No trades yet.</span>}
         </div>
         <div className="center"><button className="pill ghost" onClick={reset}>Reset wallet</button></div>
       </aside>
@@ -258,11 +296,10 @@ function Leaderboard({ byId, friends, me }) {
   }, [])
   if (!rows) return <div className="loading">Loading leaderboard…</div>
   const names = Object.fromEntries(friends.map(f => [f.id, f.username]))
-  // Everyone sees identical prices (seeded sim), so net worth is computed here, not trusted from the client.
   const board = rows.map(r => {
     const held = Object.entries(r.holdings || {})
-    const value = held.reduce((a, [id, h]) => a + (byId[id]?.price || 0) * h.qty, 0)
-    const best = held.map(([id, h]) => ({ s: byId[id], v: (byId[id]?.price || 0) * h.qty })).filter(x => x.s).sort((a, b) => b.v - a.v)[0]
+    const value = held.reduce((a, [id, h]) => a + (Number(byId[id]?.price) || 0) * h.qty, 0)
+    const best = held.map(([id, h]) => ({ c: byId[id], v: (Number(byId[id]?.price) || 0) * h.qty })).filter(x => x.c).sort((a, b) => b.v - a.v)[0]
     return { id: r.user_id, name: names[r.user_id] || '???', worth: Number(r.cash) + value, best }
   }).sort((a, b) => b.worth - a.worth)
   return (
@@ -270,7 +307,7 @@ function Leaderboard({ byId, friends, me }) {
       {board.map((r, i) => (
         <div key={r.id} className={`brow ${i < 3 ? `p${i + 1}` : ''} ${r.id === me?.id ? 'me' : ''}`}>
           <div className="bpos">#{i + 1}</div>
-          <div className="grow"><b>{r.name}</b>{r.best && <span className="muted small">Biggest bag: ${r.best.s.sym}</span>}</div>
+          <div className="grow"><b>{r.name}</b>{r.best && <span className="muted small">Biggest bag: ${r.best.c.sym}</span>}</div>
           <div className="bworth"><b>{coins(r.worth)}</b><span className={r.worth >= START_CASH ? 'up' : 'down'}>{pct(r.worth / START_CASH - 1)}</span></div>
         </div>
       ))}

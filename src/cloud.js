@@ -29,7 +29,7 @@ export async function ensureProfile(user) {
     if (error) throw error
     p = data
     await sb.from('user_state').upsert({ user_id: user.id })
-    await sb.from('wallets').upsert({ user_id: user.id })
+    await sb.from('wallets').upsert({ user_id: user.id }, { ignoreDuplicates: true })
   }
   return p
 }

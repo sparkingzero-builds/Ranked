@@ -349,3 +349,17 @@ h3::before { content: ''; width: 8px; height: 22px; background: var(--blue); tra
 .ep .me2 { position: absolute; bottom: 2px; right: 4px; font-size: 11px; opacity: .9; }
 .theirs { background: #ff2e6322; border-left: 4px solid var(--pink); padding: 10px 12px; margin-top: 12px; color: #fff; font-size: 14px; }
 .theirs div { margin-top: 4px; font-style: italic; color: #ffd6e0; }
+
+/* ===== hype ===== */
+.hype-m { font-family: var(--display); font-size: 15px; color: #a49ccf; white-space: nowrap; }
+.hype-m.hot { color: #ffb13b; text-shadow: 0 0 10px #ff6a0088; } .hype-m.cold { color: var(--cyan); }
+.why { background: #00000040; padding: 12px 14px; margin-bottom: 14px; transform: skewX(-3deg); }
+.whyhead { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+.whyhead span { font-family: var(--display); text-transform: uppercase; letter-spacing: 1px; color: var(--blue); }
+.whyhead em { font-size: 11px; color: #a49ccf; font-style: normal; }
+.whyrow { display: grid; grid-template-columns: 120px 1fr 130px; gap: 10px; align-items: center; font-size: 12px; padding: 3px 0; }
+.wsrc { color: #fff; font-weight: 800; }
+.wbar { height: 8px; background: #ffffff12; transform: skewX(-20deg); }
+.wbar div { height: 100%; } .wbar .pos { background: var(--legend); } .wbar .neg { background: var(--rare); }
+.wlbl { color: #a49ccf; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nochart { display: grid; place-items: center; font-size: 13px; }
