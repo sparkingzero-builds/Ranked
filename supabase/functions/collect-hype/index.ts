@@ -48,7 +48,7 @@ async function seed(count = 50) {
   const have = new Set((existing || []).map(c => c.id))
   const taken = new Set<string>((existing || []).map(c => c.sym))
   const rows: any[] = []
-  for (let page = 1; page <= Math.ceil(Math.min(count, 500) / 50); page++) {
+  for (let page = 1; page <= Math.ceil(Math.min(count, 1500) / 50); page++) {
     const d = await anilist(`query($p:Int){ Page(page:$p, perPage:50){ characters(sort:FAVOURITES_DESC){ id name { full } image { large } favourites
       media(perPage:1, sort:POPULARITY_DESC){ nodes { title { romaji english } coverImage { color } } } } } }`, { p: page })
     for (const c of d?.data?.Page?.characters || []) {
@@ -98,6 +98,41 @@ async function ipo(count = 5) {
       text: `IPO: $${r.sym} (${r.name.toUpperCase()}) LISTS TODAY from ${r.media_title}. Launch price ${r.price}` })))
   }
   return { listed: rows.map(r => r.sym) }
+}
+
+// Episode release notifications: every 15 min, find episodes that aired since the last check for
+// shows each player is watching (their AniList list + statuses set in Ranked) and drop a 🔔 notification.
+async function episodes() {
+  const { data: cfg } = await db.from('app_config').select('value').eq('key', 'episodes_checked_at').maybeSingle()
+  const now = Math.floor(Date.now() / 1000)
+  const since = cfg ? +cfg.value : now - 15 * 60
+  await db.from('app_config').upsert({ key: 'episodes_checked_at', value: String(now) })
+
+  const [{ data: profiles }, { data: states }] = await Promise.all([
+    db.from('profiles').select('id, anilist_name'), db.from('user_state').select('user_id, extra')])
+  const watching: Record<string, Set<number>> = {}
+  for (const p of profiles || []) {
+    const set = (watching[p.id] = new Set())
+    if (p.anilist_name) {
+      const d = await anilist(`query($u:String){ MediaListCollection(userName:$u, type:ANIME, status:CURRENT){ lists { entries { mediaId } } } }`, { u: p.anilist_name })
+      for (const l of d?.data?.MediaListCollection?.lists || []) for (const e of l.entries) set.add(e.mediaId)
+    }
+    const own = (states || []).find(s => s.user_id === p.id)?.extra?.entries || {}
+    for (const [id, e] of Object.entries<any>(own)) { if (e.status === 'CURRENT') set.add(+id); else set.delete(+id) }
+  }
+  const ids = [...new Set(Object.values(watching).flatMap(s => [...s]))]
+  if (!ids.length) return { aired: 0 }
+  const aired: any[] = []
+  for (let k = 0; k < ids.length; k += 50) {
+    const d = await anilist(`query($ids:[Int],$a:Int,$b:Int){ Page(perPage:50){ airingSchedules(mediaId_in:$ids, airingAt_greater:$a, airingAt_lesser:$b){ episode mediaId media { title { romaji english } } } } }`,
+      { ids: ids.slice(k, k + 50), a: since, b: now + 1 })
+    aired.push(...(d?.data?.Page?.airingSchedules || []))
+  }
+  const rows = []
+  for (const [uid, set] of Object.entries(watching)) for (const a of aired) if (set.has(a.mediaId))
+    rows.push({ user_id: uid, text: `📺 New episode: ${a.media.title.english || a.media.title.romaji} ep ${a.episode} is out` })
+  if (rows.length) await db.from('notifications').insert(rows)
+  return { aired: aired.length, notified: rows.length }
 }
 
 async function wikiTitle(c: any) {
@@ -256,7 +291,7 @@ async function collect(chunkArg?: number) {
     await db.from('hype_history').insert({ char_id: c.id, raw })
     results.push({ sym: c.sym, hype, sources: Object.keys(raw) })
   }
-  for (let k = 0; k < chars.length; k += 6) await Promise.all(chars.slice(k, k + 6).map(c => one(c).catch(e => console.error(c.sym, e))))
+  for (let k = 0; k < chars.length; k += 8) await Promise.all(chars.slice(k, k + 8).map(c => one(c).catch(e => console.error(c.sym, e))))
   console.log(`chunk ${chunk}: updated ${results.length}`)
   return { chunk, updated: results.length, youtube: !!YT_KEY, results }
 }
@@ -267,6 +302,7 @@ Deno.serve(async req => {
   const body = await req.json().catch(() => ({}))
   if (body.mode === 'seed') return Response.json(await seed(body.count))
   if (body.mode === 'ipo') return Response.json(await ipo(body.count))
+  if (body.mode === 'episodes') return Response.json(await episodes())
   // answer the scheduler straight away and keep scanning in the background
   // @ts-ignore EdgeRuntime is provided by Supabase
   EdgeRuntime.waitUntil(collect(body.chunk))

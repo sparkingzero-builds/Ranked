@@ -3,6 +3,7 @@ import { sb, logActivity } from './cloud.js'
 import { fetchUser, fetchList, title } from './api.js'
 import { ACH, ACHIEVEMENTS } from './achievements.js'
 import { coins, pct, START_CASH } from './market.js'
+import ProfileEdit from './ProfileEdit.jsx'
 
 const ago = t => {
   const m = Math.round((Date.now() - new Date(t)) / 60000)
@@ -67,6 +68,7 @@ export function Squad({ me, friends, openProfile }) {
         <h3>The squad</h3>
         <div className="card">
           {friends.map(f => <div key={f.id} className="lrow drag" onClick={() => openProfile(f.id)}>
+            {f.avatar ? <img src={f.avatar} alt="" className="savatar" /> : <div className="savatar blank">{f.username[0]}</div>}
             <div className="grow">{f.username}{f.id === me.id && <span className="muted small"> (you)</span>}
               <div className="muted small">{f.anilist_name ? `AniList: ${f.anilist_name}` : 'no AniList linked'}</div></div>
             <span className="muted">›</span>
@@ -178,8 +180,9 @@ function Polls({ me, friends }) {
 }
 
 // ---------- friend profile ----------
-export function Profile({ id, me, myList, friends }) {
+export function Profile({ id, me, myList, friends, onProfileSaved, openAnime }) {
   const f = friends.find(x => x.id === id)
+  const [editing, setEditing] = useState(false)
   const [d, setD] = useState(null)
   useEffect(() => {
     if (!f) return
@@ -221,15 +224,26 @@ export function Profile({ id, me, myList, friends }) {
 
   return (
     <div className="profile">
-      <div className="card pad phead">
-        {d.user?.avatar?.medium && <img src={d.user.avatar.medium} alt="" />}
+      {f.banner && <div className="pbanner" style={{ backgroundImage: `url(${f.banner})` }} />}
+      <div className={`card pad phead ${f.banner ? 'withbanner' : ''}`} style={{ '--acc': f.accent || '#ffd60a' }}>
+        {(f.avatar || d.user?.avatar?.medium) && <img src={f.avatar || d.user.avatar.medium} alt="" />}
         <div className="grow">
           <div className="pname">{f.username}</div>
+          {f.title_key && ACH[f.title_key] && <span className="ptitle">{ACH[f.title_key].icon} {ACH[f.title_key].label}</span>}
+          {f.bio && <div className="pbio">{f.bio}</div>}
           <div className="muted small">{f.anilist_name ? `AniList: ${f.anilist_name}` : 'No AniList linked'} · {completed} completed · {unlocked.size} achievements</div>
         </div>
         {match && <div className="pmatch"><b>{match.pct}%</b><span>taste match</span></div>}
         <div className="pmatch"><b>{coins(worth)}</b><span className={worth >= START_CASH ? 'up' : 'down'}>{pct(worth / START_CASH - 1)}</span></div>
+        {id === me.id && <button className="pill" onClick={() => setEditing(true)}>✏️ Edit profile</button>}
       </div>
+      {editing && <ProfileEdit me={f} unlocked={unlocked} onClose={() => setEditing(false)} onSaved={onProfileSaved} />}
+
+      {f.showcase?.length > 0 && <>
+        <h3>Pinned</h3>
+        <div className="coverrow">{f.showcase.map(x => <div key={x.id} className="bcard" onClick={() => openAnime?.(x.id)}>
+          <div className="cover" style={{ backgroundImage: `url(${x.cover})` }} /><div className="bt">{x.title}</div></div>)}</div>
+      </>}
 
       <h3>Top 10 anime</h3>
       {d.top.length ? <div className="coverrow">{d.top.map((mid, i) => d.media[mid] && <div key={mid} className="bcard">

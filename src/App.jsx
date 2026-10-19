@@ -196,7 +196,8 @@ function Main({ me, setMe }) {
           {page === 'market' && <Market me={me} friends={friends} />}
           {page === 'season' && <Season {...ctx} />}
           {page === 'squad' && <Squad me={me} friends={friends} openProfile={openProfile} />}
-          {page === 'profile' && profileId && <Profile key={profileId} id={profileId} me={me} myList={list} friends={friends} />}
+          {page === 'profile' && profileId && <Profile key={profileId} id={profileId} me={me} myList={list} friends={friends} openAnime={openAnime}
+            onProfileSaved={p => { setMe(p); setFriends(fs => fs.map(x => x.id === p.id ? p : x)) }} />}
           {page === 'profile' && profileId === me?.id && <div className="center"><button className="pill ghost" onClick={() => confirm('Sign out?') && sb.auth.signOut()}>Sign out</button></div>}
           {page === 'browse' && <Browse {...ctx} />}
           {page === 'anime' && animeId && <Detail key={animeId} id={animeId} {...ctx} />}
