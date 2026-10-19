@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import WatchAlong from './WatchAlong.jsx'
 import Stats from './Stats.jsx'
 import Market from './Market.jsx'
@@ -59,7 +60,7 @@ function Main({ me, setMe }) {
   const [page, setPage] = useState('home')
   const [username, setUsername] = useStored('ranked.user', 'AspextPro')
   const [user, setUser] = useState(null)
-  const [list, setList] = useState([])
+  const [alList, setList] = useState([])
   const [activity, setActivity] = useState([])
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -68,6 +69,23 @@ function Main({ me, setMe }) {
   const [elo, setElo] = useStored('ranked.elo', {})
   const [history, setHistory] = useStored('ranked.history', {})
   const [extra, setExtra] = useStored('ranked.extra', {})
+  // Your AniList list plus statuses set in Ranked (extra.entries); Ranked changes win over AniList
+  const list = useMemo(() => {
+    const own = extra.entries || {}
+    const merged = alList.map(e => own[e.media.id] ? { ...e, ...own[e.media.id], media: e.media } : e).filter(e => e.status !== 'REMOVED')
+    const have = new Set(alList.map(e => e.media.id))
+    for (const [id, o] of Object.entries(own)) if (!have.has(+id) && o.status !== 'REMOVED') merged.push({ score: 0, progress: 0, ...o })
+    return merged
+  }, [alList, extra.entries])
+  const setStatus = (m, status) => {
+    const cur = list.find(e => e.media.id === m.id)
+    const snap = { id: m.id, title: m.title, coverImage: m.coverImage, episodes: m.episodes, duration: m.duration, genres: m.genres || [],
+      averageScore: m.averageScore, format: m.format, seasonYear: m.seasonYear, nextAiringEpisode: m.nextAiringEpisode }
+    const progress = status === 'COMPLETED' ? (m.episodes || cur?.progress || 0) : (cur?.progress || 0)
+    const entries = { ...(extra.entries || {}), [m.id]: { status, progress, score: cur?.score || 0, media: cur?.media || snap, updatedAt: Date.now() } }
+    setExtra({ ...extra, entries })
+    if (status !== 'REMOVED') logActivity('status', { title: title(m), cover: m.coverImage?.medium, status })
+  }
   const [profileId, setProfileId] = useState(null)
   const [toast, setToast] = useState(null)
   useRankHistory(rankings, history, setHistory)
@@ -128,7 +146,7 @@ function Main({ me, setMe }) {
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
   }
 
-  const ctx = { list, media, user, activity, rankings, setRankings, ratings, overall, openRating: setRating, elo, setElo, history, me, friends, extra, setExtra, openProfile }
+  const ctx = { list, media, user, activity, rankings, setRankings, ratings, overall, openRating: setRating, elo, setElo, history, me, friends, extra, setExtra, openProfile, setStatus }
 
   return (
     <>
@@ -158,7 +176,7 @@ function Main({ me, setMe }) {
           {page === 'squad' && <Squad me={me} friends={friends} openProfile={openProfile} />}
           {page === 'profile' && profileId && <Profile key={profileId} id={profileId} me={me} myList={list} friends={friends} />}
           {page === 'profile' && profileId === me?.id && <div className="center"><button className="pill ghost" onClick={() => confirm('Sign out?') && sb.auth.signOut()}>Sign out</button></div>}
-          {page === 'browse' && <Browse openRating={setRating} />}
+          {page === 'browse' && <Browse {...ctx} />}
         </>}
       </main>
       {toast && <div className="toast"><span>{toast.icon}</span><div><b>Achievement unlocked</b>{toast.label}: {toast.desc}</div></div>}
@@ -227,7 +245,7 @@ function Home({ activity, list, rankings, media }) {
   )
 }
 
-function ListPage({ list, overall, openRating }) {
+function ListPage({ list, overall, openRating, setStatus }) {
   const [tab, setTab] = useState('COMPLETED')
   const tabs = ['CURRENT', 'COMPLETED', 'PAUSED', 'DROPPED', 'PLANNING']
   const shown = list.filter(e => e.status === tab).sort((a, b) => b.score - a.score)
@@ -250,6 +268,7 @@ function ListPage({ list, overall, openRating }) {
               <div className="reps"><b>{e.progress}</b>/{e.media.episodes ?? '?'}<span>EPS</span></div>
               <div className={`rscore ${t}`}>{e.score || '–'}</div>
               <button className="pill" onClick={() => openRating(e.media)}>{overall(e.media.id) ? `★ ${overall(e.media.id)}` : 'Rate'}</button>
+              <StatusPicker m={e.media} status={e.status} setStatus={setStatus} />
             </div>
           )
         })}
@@ -404,7 +423,8 @@ function HeadToHead({ list, elo, setElo }) {
   )
 }
 
-function Browse({ openRating }) {
+function Browse({ openRating, list, setStatus }) {
+  const statusOf = Object.fromEntries(list.map(e => [e.media.id, e.status]))
   const [q, setQ] = useState('')
   const [res, setRes] = useState([])
   useEffect(() => {
@@ -424,6 +444,7 @@ function Browse({ openRating }) {
             <div className="shopband">
               <div className="bt">{title(m)}</div>
               <div className="shopmeta">{m.format?.replace('_', ' ')} · {m.seasonYear ?? '?'}</div>
+              <StatusPicker m={m} status={statusOf[m.id]} setStatus={setStatus} />
             </div>
           </div>
         ))}
@@ -599,6 +620,34 @@ function ShareModal({ items, size, userName, scores, onClose }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+export const STATUSES = [['CURRENT', 'Watching', '▶'], ['PLANNING', 'Plan to watch', '🕒'], ['COMPLETED', 'Finished', '✅'], ['PAUSED', 'On hold', '⏸'], ['DROPPED', 'Dropped', '✖']]
+const STATUS_LABEL = Object.fromEntries(STATUSES.map(([k, l, i]) => [k, `${i} ${l}`]))
+
+function StatusPicker({ m, status, setStatus }) {
+  // the menu is portalled to <body> and fixed-positioned so slanted card edges (clip-path) and hover transforms can't clip or shift it
+  const [pos, setPos] = useState(null)
+  useEffect(() => {
+    if (!pos) return
+    const close = () => setPos(null)
+    window.addEventListener('click', close); window.addEventListener('scroll', close, true); window.addEventListener('resize', close)
+    return () => { window.removeEventListener('click', close); window.removeEventListener('scroll', close, true); window.removeEventListener('resize', close) }
+  }, [pos])
+  const toggle = e => {
+    if (pos) return setPos(null)
+    const r = e.currentTarget.getBoundingClientRect(), h = status ? 250 : 215
+    setPos({ left: Math.min(r.left, innerWidth - 200), top: r.bottom + h > innerHeight ? r.top - h - 4 : r.bottom + 4, width: Math.max(r.width, 190) })
+  }
+  return (
+    <div className="spick" onClick={e => e.stopPropagation()}>
+      <button className={`spbtn ${status ? 's-' + status : ''}`} onClick={toggle}>{status ? STATUS_LABEL[status] : '+ Add to list'} ▾</button>
+      {pos && createPortal(<div className="spmenu" style={pos} onClick={e => e.stopPropagation()}>
+        {STATUSES.map(([k, l, i]) => <button key={k} className={status === k ? 'on' : ''} onClick={() => { setStatus(m, k); setPos(null) }}>{i} {l}</button>)}
+        {status && <button className="rm" onClick={() => { setStatus(m, 'REMOVED'); setPos(null) }}>🗑 Remove from list</button>}
+      </div>, document.body)}
     </div>
   )
 }

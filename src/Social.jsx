@@ -86,6 +86,7 @@ function feedText(a) {
     case 'achievement': return <>unlocked {ACH[p.key]?.icon} <b>{ACH[p.key]?.label || p.key}</b></>
     case 'poll': return <>asked: <b>{p.question}</b></>
     case 'char_top': return <>made <b>{p.name}</b> their #1 character</>
+    case 'status': return <>{{ CURRENT: 'started watching', PLANNING: 'plans to watch', COMPLETED: 'finished', PAUSED: 'put on hold', DROPPED: 'dropped' }[p.status] || 'updated'} <b>{p.title}</b></>
     default: return a.kind
   }
 }

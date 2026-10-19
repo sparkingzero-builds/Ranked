@@ -453,3 +453,16 @@ h3::before { content: ''; width: 8px; height: 22px; background: var(--blue); tra
 .navsearch { font-size: 20px; flex: none; padding: 4px; }
 @media (max-width: 1500px) { .links button { font-size: 13px; padding: 6px 7px; } }
 .nav { padding: 0 max(16px, calc(50vw - 880px)); }
+
+/* ===== list status picker ===== */
+.spick { position: relative; margin-top: 8px; }
+.spbtn { width: 100%; text-align: left; font-family: var(--display); font-size: 13px; letter-spacing: .5px; text-transform: uppercase; padding: 6px 10px;
+  background: #ffffff14; color: #fff; transform: skewX(-8deg); }
+.spbtn:hover { background: #ffffff24; }
+.spbtn.s-CURRENT { background: #1f7bff; } .spbtn.s-PLANNING { background: #6b5bd6; } .spbtn.s-COMPLETED { background: #2fb82f; }
+.spbtn.s-PAUSED { background: #c98a1a; } .spbtn.s-DROPPED { background: #b8324f; }
+.spmenu { position: fixed; z-index: 60; background: #171236; border: 2px solid var(--blue); box-shadow: 5px 5px 0 #000; display: flex; flex-direction: column; }
+.spmenu button { text-align: left; padding: 8px 12px; color: #fff; font-weight: 800; font-size: 13px; }
+.spmenu button:hover { background: #ffffff14; } .spmenu button.on { color: var(--blue); } .spmenu .rm { color: var(--pink); border-top: 1px solid #ffffff14; }
+.rrow .spick { grid-column: 2 / -1; margin-top: 0; }
+.shop { overflow: visible; }
