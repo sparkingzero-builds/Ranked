@@ -14,9 +14,11 @@ function useMarket(me) {
   const [sparks, setSparks] = useState({})
   const [news, setNews] = useState([])
   const [wallet, setWallet] = useState(null)
+  const [events, setEvents] = useState([])
   const timer = useRef()
 
   async function load() {
+    sb.from('market_events').select('*').gt('ends_at', new Date().toISOString()).then(({ data }) => setEvents(data || []))
     const [c, s, n, w] = await Promise.all([
       sb.from('characters').select('*'),
       sb.from('price_hourly').select('char_id, t, price').order('t'),
@@ -36,7 +38,7 @@ function useMarket(me) {
       .subscribe()
     return () => { sb.removeChannel(ch); clearTimeout(timer.current) }
   }, [me.id])
-  return { chars, sparks, news, wallet, setWallet }
+  return { chars, sparks, news, wallet, setWallet, events }
 }
 
 export default function Market({ me, friends = [] }) {
@@ -45,7 +47,7 @@ export default function Market({ me, friends = [] }) {
 }
 
 function MarketLive({ me, friends }) {
-  const { chars, sparks, news, wallet, setWallet } = useMarket(me)
+  const { chars, sparks, news, wallet, setWallet, events } = useMarket(me)
   const [selId, setSelId] = useState(null)
   const [view, setView] = useState('market')
   const [sort, setSort] = useState('hype')
@@ -94,13 +96,17 @@ function MarketLive({ me, friends }) {
         {[...tape, ...tape].map((n, i) => <span key={i} className={n.up ? 'up' : 'down'}>{n.up ? '▲' : '▼'} {n.text}</span>)}
       </div></div>
 
+      {events.map(e => <div key={e.id} className={`mevent k-${e.kind}`}>
+        <b>{e.title}</b><span>ends in {fmtLeft(new Date(e.ends_at) - now)}</span>
+      </div>)}
+
       <div className="mhud">
         <div className="hudbox"><span>Net worth</span><b>{coins(worth)}</b></div>
         <div className="hudbox"><span>P/L</span><b className={pnl >= 0 ? 'up' : 'down'}>{pnl >= 0 ? '+' : ''}{coins(pnl)}</b></div>
         <div className="hudbox"><span>Cash</span><b>{coins(wallet.cash)}</b></div>
         <div className="hudbox"><span>Next tick</span><b>{Math.floor(secsLeft / 60)}:{String(secsLeft % 60).padStart(2, '0')}</b></div>
         <div className="tabs">
-          {[['market', 'Market'], ['portfolio', 'Portfolio'], ['news', 'News'], ['board', 'Leaderboard']].map(([k, l]) =>
+          {[['market', 'Market'], ['portfolio', 'Portfolio'], ['bets', 'Bets'], ['news', 'News'], ['board', 'Leaderboard']].map(([k, l]) =>
             <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}
         </div>
       </div>
@@ -121,7 +127,7 @@ function MarketLive({ me, friends }) {
               return (
                 <div key={c.id} className={`srow ${sel === c ? 'sel' : ''}`} onClick={() => setSelId(c.id)}>
                   <img src={c.image} alt="" />
-                  <div className="sname"><b>${c.sym}<Badges c={c} /></b><span>{c.name}</span></div>
+                  <div className="sname"><b>{c.name}<Badges c={c} /></b><span className="tick">{c.sym}</span></div>
                   <Spark pts={sparks[c.id]} up={ch >= 0} />
                   <div className="sprice"><b>{coins(c.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
                   <div className={`sgap ${gap > 0.03 ? 'hot' : gap < -0.03 ? 'cold' : ''}`} title="Power vs price: positive means price hasn't caught up yet">
@@ -138,6 +144,9 @@ function MarketLive({ me, friends }) {
       {view === 'portfolio' && <OpenOrders byId={byId} />}
       {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} />}
       {view === 'board' && <Leaderboard byId={byId} friends={friends} me={me} />}
+      {view === 'bets' && <Bets chars={chars} byId={byId} friends={friends} me={me} wallet={wallet} refresh={async () => {
+        const { data } = await sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(); if (data) setWallet(data)
+      }} />}
 
       {view === 'news' && <div className="newsfeed">
         {news.map(n => {
@@ -226,9 +235,9 @@ function StockPanel({ c, wallet, trade }) {
       <div className="shead" style={{ '--c': c.color || '#ffd60a' }}>
         <img src={c.image} alt="" />
         <div className="grow">
-          <div className="ssym">${c.sym}</div>
+          <div className="ssym">{c.name}</div>
           <Badges c={c} big />
-          <div className="sfull">{c.name}</div>
+          <div className="sfull"><span className="tick">{c.sym}</span></div>
           <div className="muted small">{c.media_title}</div>
           <div className="sbig">{coins(c.price)} <span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
         </div>
@@ -272,7 +281,7 @@ function Portfolio({ wallet, byId, onPick, reset }) {
             const pl = (c.price - avg) * qty
             return <div key={c.id} className="srow" onClick={() => onPick(c.id)}>
               <img src={c.image} alt="" />
-              <div className="sname"><b>${c.sym}</b><span>{qty} shares @ {coins(avg)}</span></div>
+              <div className="sname"><b>{c.name}</b><span>{c.sym} · {qty} shares @ {coins(avg)}</span></div>
               <div className="sprice"><b>{coins(c.price * qty)}</b><span className={pl >= 0 ? 'up' : 'down'}>{pl >= 0 ? '+' : ''}{coins(pl)} ({pct(c.price / avg - 1)})</span></div>
             </div>
           })}
@@ -313,7 +322,7 @@ function Leaderboard({ byId, friends, me }) {
       {board.map((r, i) => (
         <div key={r.id} className={`brow ${i < 3 ? `p${i + 1}` : ''} ${r.id === me?.id ? 'me' : ''}`}>
           <div className="bpos">#{i + 1}</div>
-          <div className="grow"><b>{r.name}</b>{r.best && <span className="muted small">Biggest bag: ${r.best.c.sym}</span>}</div>
+          <div className="grow"><b>{r.name}</b>{r.best && <span className="muted small">Biggest bag: {r.best.c.name}</span>}</div>
           <div className="bworth"><b>{coins(r.worth)}</b><span className={r.worth >= START_CASH ? 'up' : 'down'}>{pct(r.worth / START_CASH - 1)}</span></div>
         </div>
       ))}
@@ -395,11 +404,115 @@ function OpenOrders({ byId }) {
         const c = byId[o.char_id]
         return <div key={o.id} className="mini">
           <b className={o.qty > 0 ? 'up' : 'down'}>{o.qty > 0 ? 'BUY' : 'SELL'}</b>
-          <span className="grow">${c?.sym} × {Math.abs(o.qty)} @ {coins(o.limit_price)}</span>
+          <span className="grow">{c?.name} × {Math.abs(o.qty)} @ {coins(o.limit_price)}</span>
           <span className={`ostatus ${o.status}`}>{o.status}{o.status === 'filled' && ` @ ${coins(o.fill_price)}`}</span>
           {o.status === 'open' && <button className="x" onClick={async () => { await sb.rpc('cancel_order', { p_id: o.id }); load() }}>×</button>}
         </div>
       })}
+    </div>
+  )
+}
+
+const fmtLeft = ms => {
+  const m = Math.max(0, Math.round(ms / 60000))
+  return m < 60 ? `${m}m` : m < 1440 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${Math.floor(m / 1440)}d ${Math.floor((m % 1440) / 60)}h`
+}
+
+// Squad bets: which of two stocks gains more (in %) by the deadline. Winners split the pot.
+function Bets({ chars, byId, friends, me, wallet, refresh }) {
+  const [bets, setBets] = useState(null)
+  const [entries, setEntries] = useState([])
+  const [form, setForm] = useState({ a: '', b: '', stake: 100, days: 1, pick: 'a' })
+  const [err, setErr] = useState('')
+  const names = Object.fromEntries(friends.map(f => [f.id, f.username]))
+  const bySym = Object.fromEntries(chars.map(c => [c.sym, c]))
+  const load = async () => {
+    const [b, e] = await Promise.all([sb.from('bets').select('*').order('created_at', { ascending: false }).limit(40), sb.from('bet_entries').select('*')])
+    setBets(b.data || []); setEntries(e.data || [])
+  }
+  useEffect(() => {
+    load()
+    const ch = sb.channel('bets-live').on('postgres_changes', { event: '*', schema: 'public', table: 'bet_entries' }, load)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bets' }, load).subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [])
+  const resolve = v => bySym[v.trim().toUpperCase()] || chars.find(c => c.name.toLowerCase() === v.trim().toLowerCase())
+
+  async function create(e) {
+    e.preventDefault(); setErr('')
+    const a = resolve(form.a), b = resolve(form.b)
+    if (!a || !b) return setErr('Pick two stocks from the list')
+    const { error } = await sb.rpc('create_bet', { p_a: a.id, p_b: b.id, p_stake: +form.stake, p_days: +form.days, p_pick: form.pick })
+    if (error) return setErr(error.message)
+    setForm({ ...form, a: '', b: '' }); load(); refresh()
+  }
+  async function join(bet, pick) {
+    setErr('')
+    const { error } = await sb.rpc('join_bet', { p_bet: bet.id, p_pick: pick })
+    if (error) return setErr(error.message)
+    load(); refresh()
+  }
+  if (!bets) return <div className="loading">Loading bets…</div>
+
+  return (
+    <div className="mgrid">
+      <section>
+        {err && <div className="error">{err}</div>}
+        <h3>Open bets</h3>
+        {bets.filter(b => b.status === 'open').map(b => <BetCard key={b.id} b={b} byId={byId} entries={entries.filter(e => e.bet_id === b.id)} names={names} me={me} join={join} />)}
+        {!bets.some(b => b.status === 'open') && <div className="card pad muted">No open bets. Start one and challenge the squad.</div>}
+        <h3>Finished</h3>
+        {bets.filter(b => b.status !== 'open').slice(0, 10).map(b => <BetCard key={b.id} b={b} byId={byId} entries={entries.filter(e => e.bet_id === b.id)} names={names} me={me} />)}
+        {!bets.some(b => b.status !== 'open') && <div className="card pad muted">Nothing settled yet.</div>}
+      </section>
+      <aside>
+        <h3>New bet</h3>
+        <form className="card pad betform" onSubmit={create}>
+          <datalist id="stocklist">{chars.map(c => <option key={c.id} value={c.sym}>{c.name}</option>)}</datalist>
+          <label className="lbl">Stock A</label>
+          <input className="search" list="stocklist" placeholder="Ticker or name, e.g. GOJO" value={form.a} onChange={e => setForm({ ...form, a: e.target.value })} />
+          <label className="lbl">Stock B</label>
+          <input className="search" list="stocklist" placeholder="e.g. LUFFY" value={form.b} onChange={e => setForm({ ...form, b: e.target.value })} />
+          <div className="row gap">
+            <div><label className="lbl">Stake</label><input className="search qty wide" type="number" min="10" max="5000" value={form.stake} onChange={e => setForm({ ...form, stake: e.target.value })} /></div>
+            <div><label className="lbl">Length</label>
+              <div className="tabs">{[1, 3, 7].map(d => <button type="button" key={d} className={+form.days === d ? 'on' : ''} onClick={() => setForm({ ...form, days: d })}>{d}d</button>)}</div></div>
+          </div>
+          <label className="lbl">Your pick</label>
+          <div className="tabs">
+            <button type="button" className={form.pick === 'a' ? 'on' : ''} onClick={() => setForm({ ...form, pick: 'a' })}>{resolve(form.a)?.name || 'Stock A'}</button>
+            <button type="button" className={form.pick === 'b' ? 'on' : ''} onClick={() => setForm({ ...form, pick: 'b' })}>{resolve(form.b)?.name || 'Stock B'}</button>
+          </div>
+          <div className="muted small">Whichever gains more % by the deadline wins. Everyone stakes {form.stake} coins; winners split the pot. You have {coins(wallet.cash)}.</div>
+          <button className="pill lgo">Start bet</button>
+        </form>
+      </aside>
+    </div>
+  )
+}
+
+function BetCard({ b, byId, entries, names, me, join }) {
+  const A = byId[b.char_a], B = byId[b.char_b]
+  if (!A || !B) return null
+  const ca = b.status === 'open' ? A.price / b.a_start - 1 : +b.a_change
+  const cb = b.status === 'open' ? B.price / b.b_start - 1 : +b.b_change
+  const mine = entries.find(e => e.user_id === me.id)
+  const side = (k, c, ch) => {
+    const who = entries.filter(e => e.pick === k)
+    const won = b.status !== 'open' && b.winner === k
+    return <div className={`bside ${won ? 'won' : ''} ${mine?.pick === k ? 'mine' : ''}`}>
+      <img src={c.image} alt="" />
+      <div className="grow"><b>{c.name}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span>
+        <small>{who.map(e => names[e.user_id] || '?').join(', ') || 'no backers'}</small></div>
+      {join && !mine && <button className="pill" onClick={() => join(b, k)}>Back</button>}
+      {won && <span className="crown">👑</span>}
+    </div>
+  }
+  return (
+    <div className="card pad betcard">
+      <div className="row"><span className="muted small">by {names[b.creator] || '?'} · {coins(b.stake)} coins each · pot {coins(b.stake * entries.length)}</span>
+        <span className="muted small">{b.status === 'open' ? `ends in ${fmtLeft(new Date(b.ends_at) - Date.now())}` : b.status === 'void' ? 'refunded' : 'settled'}</span></div>
+      <div className="bsides">{side('a', A, ca)}<div className="bvs">VS</div>{side('b', B, cb)}</div>
     </div>
   )
 }

@@ -54,7 +54,7 @@ async function seed(count = 50) {
     for (const c of d?.data?.Page?.characters || []) {
       if (have.has(c.id)) continue
       const parts = c.name.full.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
-      const cands = [parts[parts.length - 1], parts[0], parts.join('')].filter(Boolean).map((p: string) => p.slice(0, 5).toUpperCase())
+      const cands = [parts[0], parts.join(''), parts[parts.length - 1]].filter(Boolean).map((p: string) => p.slice(0, 6).toUpperCase())
       let sym = cands.find((x: string) => x.length >= 2 && !taken.has(x))
       if (!sym) { let n = 2; while (taken.has((cands[0] || 'CHR') + n)) n++; sym = (cands[0] || 'CHR') + n }
       taken.add(sym)
@@ -83,7 +83,7 @@ async function ipo(count = 5) {
   const pick = cands.sort((a, b) => b.c.favourites - a.c.favourites).slice(0, count)
   const rows = pick.map(({ c, m }) => {
     const parts = c.name.full.replace(/[^A-Za-z ]/g, '').split(' ').filter(Boolean)
-    const cands2 = [parts[parts.length - 1], parts[0], parts.join('')].filter(Boolean).map((p: string) => p.slice(0, 5).toUpperCase())
+    const cands2 = [parts[0], parts.join(''), parts[parts.length - 1]].filter(Boolean).map((p: string) => p.slice(0, 6).toUpperCase())
     let sym = cands2.find((x: string) => x.length >= 2 && !taken.has(x))
     if (!sym) { let n = 2; while (taken.has((cands2[0] || 'IPO') + n)) n++; sym = (cands2[0] || 'IPO') + n }
     taken.add(sym)

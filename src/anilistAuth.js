@@ -43,6 +43,6 @@ export async function saveToAniList(mediaId, status, progress) {
     return
   }
   const vars = { m: mediaId, s: status }
-  if (status === 'COMPLETED' && progress) vars.p = progress
+  if (progress != null) vars.p = progress
   await gql(`mutation($m:Int,$s:MediaListStatus,$p:Int){ SaveMediaListEntry(mediaId:$m, status:$s, progress:$p){ id status } }`, vars)
 }

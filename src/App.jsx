@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ANILIST_CLIENT_ID, connectAniList, disconnectAniList, getToken, saveToAniList } from './anilistAuth.js'
-import WatchAlong from './WatchAlong.jsx'
 import Stats from './Stats.jsx'
 import Market from './Market.jsx'
+import Detail from './Detail.jsx'
 import Season, { currentSeason } from './Season.jsx'
 import CharRank from './CharRank.jsx'
 import { Bell, Squad, Profile } from './Social.jsx'
@@ -78,14 +78,14 @@ function Main({ me, setMe }) {
     for (const [id, o] of Object.entries(own)) if (!have.has(+id) && o.status !== 'REMOVED') merged.push({ score: 0, progress: 0, ...o })
     return merged
   }, [alList, extra.entries])
-  const setStatus = (m, status) => {
+  const setStatus = (m, status, prog) => {
     const cur = list.find(e => e.media.id === m.id)
     const snap = { id: m.id, title: m.title, coverImage: m.coverImage, episodes: m.episodes, duration: m.duration, genres: m.genres || [],
       averageScore: m.averageScore, format: m.format, seasonYear: m.seasonYear, nextAiringEpisode: m.nextAiringEpisode }
-    const progress = status === 'COMPLETED' ? (m.episodes || cur?.progress || 0) : (cur?.progress || 0)
+    const progress = prog ?? (status === 'COMPLETED' ? (m.episodes || cur?.progress || 0) : (cur?.progress || 0))
     const entries = { ...(extra.entries || {}), [m.id]: { status, progress, score: cur?.score || 0, media: cur?.media || snap, updatedAt: Date.now() } }
     setExtra({ ...extra, entries })
-    if (status !== 'REMOVED') logActivity('status', { title: title(m), cover: m.coverImage?.medium, status })
+    if (status !== 'REMOVED' && prog == null) logActivity('status', { title: title(m), cover: m.coverImage?.medium, status })
     // Connected to AniList: write it there too, then let AniList be the source of truth for this show again
     if (getToken()) saveToAniList(m.id, status, progress).then(() => {
       setList(l => status === 'REMOVED' ? l.filter(e => e.media.id !== m.id)
@@ -130,6 +130,18 @@ function Main({ me, setMe }) {
   }, [list, ratings, rankings, extra])
   useAchievements(me, achLocal, a => { setToast(a); setTimeout(() => setToast(null), 4500) }, [me?.id, page, list.length, achLocal.ratings, achLocal.top10, achLocal.charTop, achLocal.season])
   const openProfile = id => { setProfileId(id); setPage('profile') }
+  const [animeId, setAnimeId] = useState(null)
+  const openAnime = id => { setAnimeId(id); setPage('anime') }
+  // +1 episode: finishing the last episode marks it Finished; starting a planned show marks it Watching
+  const setProgress = (m, n) => {
+    const cur = list.find(e => e.media.id === m.id)
+    const eps = m.episodes || cur?.media?.episodes
+    let status = cur?.status && cur.status !== 'PLANNING' ? cur.status : 'CURRENT'
+    if (eps && n >= eps) { status = 'COMPLETED'; n = eps }
+    else if (status === 'COMPLETED') status = 'CURRENT'
+    setStatus(m, status, n)
+    if (status === 'COMPLETED' && cur?.status !== 'COMPLETED') logActivity('status', { title: title(m), cover: m.coverImage?.medium, status })
+  }
 
   async function changeAnilist(name) {
     setUsername(name)
@@ -157,14 +169,14 @@ function Main({ me, setMe }) {
     return (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1)
   }
 
-  const ctx = { list, media, user, activity, rankings, setRankings, ratings, overall, openRating: setRating, elo, setElo, history, me, friends, extra, setExtra, openProfile, setStatus }
+  const ctx = { list, media, user, activity, rankings, setRankings, ratings, overall, openRating: setRating, elo, setElo, history, me, friends, extra, setExtra, openProfile, setStatus, setProgress, openAnime }
 
   return (
     <>
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
         <div className="links">
-          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['mates', 'Mates'], ['squad', 'Squad'], ['watch', 'Watch-Along'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
+          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['mates', 'Mates'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
             <button key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)}>{l}</button>)}
         </div>
         <UserBox user={user} onChange={changeAnilist} />
@@ -180,7 +192,6 @@ function Main({ me, setMe }) {
           {page === 'rank' && <Rankings {...ctx} />}
           {page === 'h2h' && <HeadToHead {...ctx} />}
           {page === 'mates' && <Mates {...ctx} />}
-          {page === 'watch' && <WatchAlong {...ctx} />}
           {page === 'stats' && <Stats {...ctx} />}
           {page === 'market' && <Market me={me} friends={friends} />}
           {page === 'season' && <Season {...ctx} />}
@@ -188,6 +199,7 @@ function Main({ me, setMe }) {
           {page === 'profile' && profileId && <Profile key={profileId} id={profileId} me={me} myList={list} friends={friends} />}
           {page === 'profile' && profileId === me?.id && <div className="center"><button className="pill ghost" onClick={() => confirm('Sign out?') && sb.auth.signOut()}>Sign out</button></div>}
           {page === 'browse' && <Browse {...ctx} />}
+          {page === 'anime' && animeId && <Detail key={animeId} id={animeId} {...ctx} />}
         </>}
       </main>
       {flashMsg && <div className="flash">{flashMsg}</div>}
@@ -257,7 +269,7 @@ function Home({ activity, list, rankings, media }) {
   )
 }
 
-function ListPage({ list, overall, openRating, setStatus }) {
+function ListPage({ list, overall, openRating, setStatus, setProgress, openAnime }) {
   const [tab, setTab] = useState('COMPLETED')
   const tabs = ['CURRENT', 'COMPLETED', 'PAUSED', 'DROPPED', 'PLANNING']
   const shown = list.filter(e => e.status === tab).sort((a, b) => b.score - a.score)
@@ -272,13 +284,14 @@ function ListPage({ list, overall, openRating, setStatus }) {
           const pct = e.media.episodes ? Math.min(100, (e.progress / e.media.episodes) * 100) : 0
           return (
             <div key={e.media.id} className={`rrow t-${t}`}>
-              <div className="rcover" style={{ backgroundImage: `url(${e.media.coverImage.large})` }} />
+              <div className="rcover linkish" onClick={() => openAnime(e.media.id)} style={{ backgroundImage: `url(${e.media.coverImage.large})` }} />
               <div className="rinfo">
-                <div className="rtitle">{title(e.media)}</div>
+                <div className="rtitle linkish" onClick={() => openAnime(e.media.id)}>{title(e.media)}</div>
                 <div className="rmeta"><span className={`rtier ${t}`}>{TIER_NAME[t]}</span>{e.media.format?.replace('_', ' ')} · {e.media.seasonYear ?? '?'}</div>
                 <div className="rprog"><div style={{ width: `${pct}%` }} /></div>
               </div>
-              <div className="reps"><b>{e.progress}</b>/{e.media.episodes ?? '?'}<span>EPS</span></div>
+              <div className="reps"><b>{e.progress}</b>/{e.media.episodes ?? '?'}<span>EPS</span>
+                {e.status === 'CURRENT' && <button className="plus1" title="Watched another episode" onClick={() => setProgress(e.media, e.progress + 1)}>+1</button>}</div>
               <div className={`rscore ${t}`}>{e.score || '–'}</div>
               <button className="pill" onClick={() => openRating(e.media)}>{overall(e.media.id) ? `★ ${overall(e.media.id)}` : 'Rate'}</button>
               <StatusPicker m={e.media} status={e.status} setStatus={setStatus} />
@@ -436,7 +449,7 @@ function HeadToHead({ list, elo, setElo }) {
   )
 }
 
-function Browse({ openRating, list, setStatus }) {
+function Browse({ openRating, list, setStatus, openAnime }) {
   const statusOf = Object.fromEntries(list.map(e => [e.media.id, e.status]))
   const [q, setQ] = useState('')
   const [res, setRes] = useState([])
@@ -451,7 +464,7 @@ function Browse({ openRating, list, setStatus }) {
       <h3>{q ? 'Results' : 'Trending now'}</h3>
       <div className="browse">
         {res.map(m => (
-          <div key={m.id} className={`shop t-${tier(m.averageScore / 10)}`} onClick={() => openRating(m)}>
+          <div key={m.id} className={`shop t-${tier(m.averageScore / 10)}`} onClick={() => openAnime(m.id)}>
             <div className="shopimg" style={{ backgroundImage: `url(${m.coverImage.large})` }}>
               {m.averageScore && <span className="score">{m.averageScore}%</span>}
             </div>
@@ -641,7 +654,7 @@ function ShareModal({ items, size, userName, scores, onClose }) {
 export const STATUSES = [['CURRENT', 'Watching', '▶'], ['PLANNING', 'Plan to watch', '🕒'], ['COMPLETED', 'Finished', '✅'], ['PAUSED', 'On hold', '⏸'], ['DROPPED', 'Dropped', '✖']]
 const STATUS_LABEL = Object.fromEntries(STATUSES.map(([k, l, i]) => [k, `${i} ${l}`]))
 
-function StatusPicker({ m, status, setStatus }) {
+export function StatusPicker({ m, status, setStatus }) {
   // the menu is portalled to <body> and fixed-positioned so slanted card edges (clip-path) and hover transforms can't clip or shift it
   const [pos, setPos] = useState(null)
   useEffect(() => {

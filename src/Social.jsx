@@ -59,8 +59,9 @@ export function Squad({ me, friends, openProfile }) {
         <div className="tabs squadtabs">
           <button className={tab === 'feed' ? 'on' : ''} onClick={() => setTab('feed')}>Activity</button>
           <button className={tab === 'polls' ? 'on' : ''} onClick={() => setTab('polls')}>Hot takes</button>
+          <button className={tab === 'battles' ? 'on' : ''} onClick={() => setTab('battles')}>Battles</button>
         </div>
-        {tab === 'feed' ? <Feed friends={friends} openProfile={openProfile} /> : <Polls me={me} friends={friends} />}
+        {tab === 'feed' ? <Feed friends={friends} openProfile={openProfile} /> : tab === 'polls' ? <Polls me={me} friends={friends} /> : <Battles me={me} friends={friends} />}
       </section>
       <aside>
         <h3>The squad</h3>
@@ -86,6 +87,10 @@ function feedText(a) {
     case 'achievement': return <>unlocked {ACH[p.key]?.icon} <b>{ACH[p.key]?.label || p.key}</b></>
     case 'poll': return <>asked: <b>{p.question}</b></>
     case 'char_top': return <>made <b>{p.name}</b> their #1 character</>
+    case 'bet': return <>started a bet: <b>{p.a} vs {p.b}</b> ({p.stake} coins, backing {p.pick})</>
+    case 'bet_won': return <>won <b>{p.payout} coins</b> on {p.a} vs {p.b} 🏆</>
+    case 'dividend': return <>got a <b>{p.amount} coin</b> dividend from {p.sym} 💰</>
+    case 'battle': return <>challenged <b>{p.vs}</b> to a Top 10 battle ⚔️</>
     case 'status': return <>{{ CURRENT: 'started watching', PLANNING: 'plans to watch', COMPLETED: 'finished', PAUSED: 'put on hold', DROPPED: 'dropped' }[p.status] || 'updated'} <b>{p.title}</b></>
     default: return a.kind
   }
@@ -258,5 +263,84 @@ export function Profile({ id, me, myList, friends }) {
         </div>
       </div>
     </div>
+  )
+}
+
+// ---------- Top 10 battles: two players' Top 10s side by side, the rest of the squad votes for 48h ----------
+function Battles({ me, friends }) {
+  const [battles, setBattles] = useState(null)
+  const [votes, setVotes] = useState([])
+  const [media, setMedia] = useState({})
+  const [rival, setRival] = useState('')
+  const [err, setErr] = useState('')
+  const names = Object.fromEntries(friends.map(f => [f.id, f.username]))
+  const others = friends.filter(f => f.id !== me.id)
+  const load = async () => {
+    const [b, v] = await Promise.all([sb.from('battles').select('*').order('created_at', { ascending: false }).limit(20), sb.from('battle_votes').select('*')])
+    const list = b.data || []
+    setBattles(list); setVotes(v.data || [])
+    const ids = [...new Set(list.flatMap(x => [...x.a_list, ...x.b_list]))]
+    const got = {}
+    for (let i = 0; i < ids.length; i += 50) Object.assign(got, await anilistMedia(ids.slice(i, i + 50)))
+    setMedia(got)
+  }
+  useEffect(() => {
+    load()
+    const ch = sb.channel('battle-votes').on('postgres_changes', { event: '*', schema: 'public', table: 'battle_votes' }, load).subscribe()
+    return () => { sb.removeChannel(ch) }
+  }, [])
+
+  async function challenge() {
+    setErr('')
+    if (!rival) return
+    const { data } = await sb.from('user_state').select('user_id, rankings').in('user_id', [me.id, rival])
+    const top = id => ((data || []).find(r => r.user_id === id)?.rankings?.['10'] || []).slice(0, 10)
+    const a = top(me.id), b = top(rival)
+    if (a.length < 3) return setErr('Build your Top 10 first (Rankings page).')
+    if (b.length < 3) return setErr(`${names[rival]} hasn't built a Top 10 yet.`)
+    const { error } = await sb.from('battles').insert({ a_user: me.id, b_user: rival, a_list: a, b_list: b })
+    if (error) return setErr(error.message)
+    logActivity('battle', { vs: names[rival] })
+    setRival(''); load()
+  }
+  const vote = async (bt, pick) => { await sb.from('battle_votes').upsert({ battle_id: bt.id, pick }); load() }
+  if (!battles) return <div className="loading">Loading battles…</div>
+
+  return (
+    <>
+      <div className="card pad row gap newbattle">
+        <span className="pq small">Challenge a mate</span>
+        <select className="search" value={rival} onChange={e => setRival(e.target.value)}>
+          <option value="">Pick someone…</option>
+          {others.map(f => <option key={f.id} value={f.id}>{f.username}</option>)}
+        </select>
+        <button className="pill" onClick={challenge} disabled={!rival}>⚔️ Battle</button>
+      </div>
+      {!others.length && <div className="muted small">Invite friends to start battling.</div>}
+      {err && <div className="error">{err}</div>}
+      {battles.map(bt => {
+        const bv = votes.filter(v => v.battle_id === bt.id)
+        const na = bv.filter(v => v.pick === 'a').length, nb = bv.length - na
+        const open = new Date(bt.ends_at) > Date.now()
+        const mine = bv.find(v => v.user_id === me.id)
+        const inIt = [bt.a_user, bt.b_user].includes(me.id)
+        const winner = !open && na !== nb ? (na > nb ? 'a' : 'b') : null
+        const col = (k, uid, ids, n) => (
+          <div className={`bcol ${winner === k ? 'won' : ''} ${mine?.pick === k ? 'mine' : ''}`}>
+            <div className="bhead"><b>{names[uid] || '?'}</b><span>{n} vote{n === 1 ? '' : 's'}</span>{winner === k && <span>👑</span>}</div>
+            {ids.map((id, i) => media[id] && <div key={id} className="mini"><b className={`r r${i + 1}`}>#{i + 1}</b>
+              <img src={media[id].coverImage.medium} alt="" /><span className="grow">{media[id].title.english || media[id].title.romaji}</span></div>)}
+            {open && !inIt && <button className="pill" onClick={() => vote(bt, k)}>{mine?.pick === k ? '✓ Voted' : 'Vote'}</button>}
+          </div>
+        )
+        return (
+          <div key={bt.id} className="card pad battle">
+            <div className="muted small">{open ? `Voting ends in ${Math.max(1, Math.round((new Date(bt.ends_at) - Date.now()) / 3600000))}h` : winner ? 'Finished' : 'Finished: draw'}{inIt && open ? ' · you can\'t vote in your own battle' : ''}</div>
+            <div className="bcols">{col('a', bt.a_user, bt.a_list, na)}<div className="bvs">VS</div>{col('b', bt.b_user, bt.b_list, nb)}</div>
+          </div>
+        )
+      })}
+      {!battles.length && <div className="card pad muted">No battles yet. Challenge someone: the squad decides whose Top 10 is better.</div>}
+    </>
   )
 }

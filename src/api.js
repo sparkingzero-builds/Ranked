@@ -21,7 +21,7 @@ export async function fetchUser(name) {
 
 export async function fetchList(name) {
   const d = await gql(`query($n:String){ MediaListCollection(userName:$n, type:ANIME){
-    lists { entries { status progress score(format:POINT_10) updatedAt media { ${MEDIA} } } } } }`, { n: name })
+    lists { entries { status progress score(format:POINT_10) updatedAt startedAt { year month day } completedAt { year month day } media { ${MEDIA} } } } } }`, { n: name })
   const seen = new Map()
   d.MediaListCollection.lists.flatMap(l => l.entries).forEach(e => seen.set(e.media.id, e))
   return [...seen.values()]
@@ -49,4 +49,14 @@ export async function fetchTopCharacters() {
   const d = await gql(`{ Page(perPage:50){ characters(sort:FAVOURITES_DESC){ id name { full } image { large medium } favourites
     media(perPage:1, sort:POPULARITY_DESC){ nodes { id title { romaji english } coverImage { color } } } } } }`)
   return d.Page.characters
+}
+
+export async function fetchMediaDetail(id) {
+  const d = await gql(`query($id:Int){ Media(id:$id){ ${MEDIA} description(asHtml:false) bannerImage season status source
+    studios(isMain:true){ nodes { name } } trailer { id site }
+    externalLinks { site url type icon color }
+    characters(sort:[ROLE, FAVOURITES_DESC], perPage:12){ edges { role node { id name { full } image { large } } } }
+    relations { edges { relationType node { id type format title { romaji english } coverImage { large } } } }
+    recommendations(perPage:8, sort:RATING_DESC){ nodes { mediaRecommendation { id title { romaji english } coverImage { large } averageScore } } } } }`, { id })
+  return d.Media
 }

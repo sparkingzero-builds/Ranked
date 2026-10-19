@@ -19,7 +19,7 @@ async function fetchSeason({ season, year }) {
 
 // Rank this season's shows; your order is saved in user_state.extra.season[KEY], and the squad
 // ranking is a points tally (1st = most points) across everyone's lists.
-export default function Season({ list, extra, setExtra, me }) {
+export default function Season({ list, extra, setExtra, me, openAnime }) {
   const [cur, setCur] = useState(currentSeason())
   const key = `${cur.season}-${cur.year}`
   const [shows, setShows] = useState(null)
@@ -62,7 +62,7 @@ export default function Season({ list, extra, setExtra, me }) {
               const e = status[m.id], ranked = order.indexOf(m.id)
               return (
                 <div key={m.id} className="sshow">
-                  <div className="cover" style={{ backgroundImage: `url(${m.coverImage.large})` }}>
+                  <div className="cover linkish" onClick={() => openAnime(m.id)} style={{ backgroundImage: `url(${m.coverImage.large})` }}>
                     {m.nextAiringEpisode && <div className="air">Ep {m.nextAiringEpisode.episode}<br />{countdown(m.nextAiringEpisode.timeUntilAiring)}</div>}
                     {ranked >= 0 && <span className="score">#{ranked + 1}</span>}
                   </div>

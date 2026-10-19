@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+import { useState } from 'react'
 import { title } from './api.js'
+import YearWrapped from './YearWrapped.jsx'
 
 const CLASSES = {
   Action: ['Brawler', 'You live for the fight scenes.'],
@@ -17,7 +19,18 @@ const CLASSES = {
   Horror: ['Survivor', 'Fear is just another genre.'],
 }
 
-export default function Stats({ list, user }) {
+export default function Stats(props) {
+  const [mode, setMode] = useState('year')
+  return <>
+    <div className="tabs kindtabs">
+      <button className={mode === 'year' ? 'on' : ''} onClick={() => setMode('year')}>Year in anime</button>
+      <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>All time</button>
+    </div>
+    {mode === 'year' ? <YearWrapped {...props} /> : <AllTime {...props} />}
+  </>
+}
+
+function AllTime({ list, user }) {
   const s = useMemo(() => compute(list), [list])
   if (!s) return <div className="loading">No anime to crunch yet.</div>
   const [cls, blurb] = CLASSES[s.genres[0]?.[0]] || ['Otaku', 'You watch a bit of everything.']

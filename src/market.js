@@ -16,4 +16,5 @@ export const SOURCES = {
   trending: { label: 'Trending', icon: '📈', note: 'Show trending score' },
   airing: { label: 'Airing', icon: '📺', note: 'New episode this week' },
   mal: { label: 'MyAnimeList', icon: '❤️', note: 'New favourites' },
+  event: { label: 'Market event', icon: '⚡', note: 'Crash, bull run or hype week' },
 }
