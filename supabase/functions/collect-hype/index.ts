@@ -27,7 +27,7 @@ const WEIGHTS: Record<string, number> = { wiki: 0.3, reddit: 0.2, anilist: 0.15,
 
 async function json(url: string, init: RequestInit = {}) {
   try {
-    const r = await fetch(url, { ...init, headers: { ...UA, ...(init.headers || {}) } })
+    const r = await fetch(url, { ...init, headers: { ...UA, ...(init.headers || {}) }, signal: AbortSignal.timeout(8000) })
     if (!r.ok) return null
     return await r.json()
   } catch { return null }
@@ -119,13 +119,16 @@ const NEWS: Record<string, [string, string]> = {
   mal: ['MAL fans rally behind {N}: favourites {X}', 'MAL interest in {N} stalls {X}'],
 }
 
-async function collect() {
-  const { data: chars } = await db.from('characters').select('*')
-  if (!chars?.length) return { error: 'no characters, run seed first' }
-  const hour = new Date().getUTCHours()
+// Runs every 20 minutes; each run handles a third of the market so every character is scanned hourly.
+async function collect(chunkArg?: number) {
+  const { data: all } = await db.from('characters').select('*').order('id')
+  if (!all?.length) return { error: 'no characters, run seed first' }
+  const now = new Date(), hour = now.getUTCHours()
+  const chunk = chunkArg ?? Math.floor(now.getUTCMinutes() / 20) % 3
+  const chars = all.map((c, i) => ({ ...c, i })).filter(c => c.i % 3 === chunk)
 
   // AniList: favourites + show trending/airing, one batched call
-  const ids = chars.map(c => c.id)
+  const ids = chars.map((c: any) => c.id)
   const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
     media(perPage:1, sort:POPULARITY_DESC){ nodes { trending nextAiringEpisode { timeUntilAiring } } } } } }`, { ids })
   const alBy = Object.fromEntries((al?.data?.Page?.characters || []).map((c: any) => [c.id, c]))
@@ -138,8 +141,8 @@ async function collect() {
   const lastOf = (id: number, k: string) => { const v = (histBy[id] || []).map(r => r[k]).filter((x: any) => typeof x === 'number'); return v.length ? v[v.length - 1] : null }
 
   const results: any[] = []
-  for (let i = 0; i < chars.length; i++) {
-    const c = chars[i]
+  const one = async (c: any) => {
+    const i = c.i
     if (!c.wiki_title) { c.wiki_title = await wikiTitle(c); if (c.wiki_title) await db.from('characters').update({ wiki_title: c.wiki_title }).eq('id', c.id) }
     const raw: Record<string, number> = {}, parts: Record<string, { score: number, label: string }> = {}
 
@@ -195,13 +198,18 @@ async function collect() {
     await db.from('hype_history').insert({ char_id: c.id, raw })
     results.push({ sym: c.sym, hype, sources: Object.keys(raw) })
   }
-  return { updated: results.length, youtube: !!YT_KEY, results }
+  for (let k = 0; k < chars.length; k += 4) await Promise.all(chars.slice(k, k + 4).map(c => one(c).catch(e => console.error(c.sym, e))))
+  console.log(`chunk ${chunk}: updated ${results.length}`)
+  return { chunk, updated: results.length, youtube: !!YT_KEY, results }
 }
 
 Deno.serve(async req => {
   const { data: cfg } = await db.from('app_config').select('value').eq('key', 'cron_secret').single()
   if (!cfg || req.headers.get('x-cron-secret') !== cfg.value) return new Response('forbidden', { status: 403 })
   const body = await req.json().catch(() => ({}))
-  const out = body.mode === 'seed' ? await seed() : await collect()
-  return new Response(JSON.stringify(out), { headers: { 'Content-Type': 'application/json' } })
+  if (body.mode === 'seed') return Response.json(await seed())
+  // answer the scheduler straight away and keep scanning in the background
+  // @ts-ignore EdgeRuntime is provided by Supabase
+  EdgeRuntime.waitUntil(collect(body.chunk))
+  return Response.json({ started: true })
 })
