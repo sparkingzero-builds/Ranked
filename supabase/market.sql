@@ -131,10 +131,10 @@ end $$;
 alter publication supabase_realtime add table characters;
 alter publication supabase_realtime add table news;
 
--- schedules: price tick every 5 min, hype collection hourly
+-- schedules: price tick every 5 min, hype collection every 20 min (a third of the market each run)
 insert into app_config values ('cron_secret', encode(gen_random_bytes(24), 'hex')) on conflict do nothing;
 select cron.schedule('market-tick', '*/5 * * * *', 'select market_tick()');
-select cron.schedule('collect-hype', '7 * * * *', $$
+select cron.schedule('collect-hype', '7,27,47 * * * *', $$
   select net.http_post(
     url := 'https://kzadwdqfpvxaaotbifvf.supabase.co/functions/v1/collect-hype',
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-cron-secret', (select value from app_config where key = 'cron_secret')),
