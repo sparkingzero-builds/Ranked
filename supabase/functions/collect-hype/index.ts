@@ -163,8 +163,13 @@ async function franchise(titles: string[] = [], min = 150) {
     added[t] = n
     await sleep(900)
   }
-  for (let k = 0; k < rows.length; k += 200) await db.from('characters').insert(rows.slice(k, k + 200))
-  return { added: rows.length, byTitle: added }
+  const errors: string[] = []
+  let saved = 0
+  for (let k = 0; k < rows.length; k += 100) {
+    const { error } = await db.from('characters').insert(rows.slice(k, k + 100))
+    if (error) errors.push(error.message); else saved += Math.min(100, rows.length - k)
+  }
+  return { found: rows.length, saved, errors, byTitle: added }
 }
 
 async function wikiTitle(c: any) {
