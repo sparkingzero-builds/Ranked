@@ -23,7 +23,7 @@ const db = createClient(Deno.env.get('SUPABASE_URL')!, serviceKey())
 const YT_KEY = Deno.env.get('YOUTUBE_API_KEY')
 const UA = { 'User-Agent': 'RankedHypeBot/1.0 (anime ranking app for friends)' }
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
-const WEIGHTS: Record<string, number> = { wiki: 0.3, reddit: 0.2, anilist: 0.15, trending: 0.1, airing: 0.1, youtube: 0.1, mal: 0.05 }
+const WEIGHTS: Record<string, number> = { wiki: 0.3, reddit: 0.2, manga: 0.15, anilist: 0.15, trending: 0.1, airing: 0.1, youtube: 0.1, mal: 0.05 }
 
 async function json(url: string, init: RequestInit = {}) {
   try {
@@ -152,6 +152,19 @@ async function wiki(c: any) {
   return { raw: latest, ratio: latest / base }
 }
 
+// Manga chatter: Reddit posts about "<manga> chapter" in the last day, their upvotes, and the newest
+// chapter number mentioned in titles (needs 2+ posts agreeing so one random number can't fake a release).
+async function mangaBuzz(title: string) {
+  const q = encodeURIComponent(`"${title}" chapter`)
+  const r = await json(`https://www.reddit.com/search.json?q=${q}&sort=new&t=day&limit=100&raw_json=1`)
+  if (!r?.data) return null
+  const posts = r.data.children.map((c: any) => c.data)
+  const counts: Record<number, number> = {}
+  for (const p of posts) for (const m of (p.title as string).matchAll(/\b(?:chapter|ch\.?)\s*#?(\d{1,4})\b/gi)) counts[+m[1]] = (counts[+m[1]] || 0) + 1
+  const confirmed = Object.entries(counts).filter(([, n]) => n >= 2).map(([ch]) => +ch)
+  return { posts: posts.length, score: posts.reduce((a: number, p: any) => a + (p.score || 0), 0), chapter: confirmed.length ? Math.max(...confirmed) : null }
+}
+
 async function reddit(c: any) {
   const q = encodeURIComponent(`"${c.name}"`)
   const r = await json(`https://www.reddit.com/search.json?q=${q}&sort=new&t=day&limit=100&raw_json=1`)
@@ -189,6 +202,7 @@ const NEWS: Record<string, [string, string]> = {
   airing: ['NEW EPISODE: {M} just aired, {N} hype meter spiking', '{M} on break: {N} hype cools'],
   youtube: ['{N} EDITS FLOODING YOUTUBE: uploads {X}', 'YouTube dries up for {N}: uploads {X}'],
   mal: ['MAL fans rally behind {N}: favourites {X}', 'MAL interest in {N} stalls {X}'],
+  manga: ['MANGA HYPE: {N} chapter talk exploding ({X})', 'Manga chatter about {N} dies down ({X})'],
 }
 
 // Runs every 10 minutes; each run handles a sixth of the market so every character is scanned hourly.
@@ -205,7 +219,8 @@ async function collect(chunkArg?: number) {
   const alBy: Record<number, any> = {}
   for (let k = 0; k < ids.length; k += 50) {
     const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
-      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { id status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
+      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { id status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } }
+      manga: media(type:MANGA, perPage:1, sort:POPULARITY_DESC){ nodes { id status title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
     for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
   }
 
@@ -215,6 +230,46 @@ async function collect(chunkArg?: number) {
   for (const h of hist || []) (histBy[h.char_id] ||= []).push(h.raw)
   const avgOf = (id: number, k: string) => { const v = (histBy[id] || []).map(r => r[k]).filter((x: any) => typeof x === 'number'); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null }
   const lastOf = (id: number, k: string) => { const v = (histBy[id] || []).map(r => r[k]).filter((x: any) => typeof x === 'number'); return v.length ? v[v.length - 1] : null }
+
+  // link characters to their manga (only writes when something changed)
+  for (const c of chars) {
+    const mg = alBy[c.id]?.manga?.nodes?.[0]
+    if (!mg) continue
+    const t = mg.title.english || mg.title.romaji
+    if (c.manga_id !== mg.id || c.manga_status !== mg.status || c.manga_title !== t) {
+      Object.assign(c, { manga_id: mg.id, manga_title: t, manga_status: mg.status })
+      await db.from('characters').update({ manga_id: mg.id, manga_title: t, manga_status: mg.status }).eq('id', c.id)
+    }
+  }
+  const { data: buzzRows } = await db.from('manga_buzz').select('*')
+  const buzz: Record<number, any> = Object.fromEntries((buzzRows || []).map(b => [b.manga_id, b]))
+  const releasing = new Map<number, string>()
+  for (const c of all) if (c.manga_id && c.manga_status === 'RELEASING' && c.manga_id % CHUNKS === chunk) releasing.set(c.manga_id, c.manga_title)
+  const doManga = async ([mid, mt]: [number, string]) => {
+    const b = await mangaBuzz(mt)
+    if (!b) return
+    const prev = buzz[mid]
+    const row: any = { manga_id: mid, title: mt, posts_24h: b.posts, score_24h: b.score, updated_at: new Date().toISOString(),
+      base_posts: prev?.base_posts != null ? +prev.base_posts * 0.9 + b.posts * 0.1 : b.posts,
+      base_score: prev?.base_score != null ? +prev.base_score * 0.9 + b.score * 0.1 : b.score,
+      last_chapter: prev?.last_chapter ?? b.chapter, chapter_at: prev?.chapter_at ?? null }
+    // Chapter day: a newer chapter than we've seen before (first sighting just sets the baseline)
+    if (b.chapter && prev?.last_chapter && b.chapter > prev.last_chapter && b.chapter <= prev.last_chapter + 3) {
+      row.last_chapter = b.chapter; row.chapter_at = new Date().toISOString()
+      const key = `m${mid}-${b.chapter}`
+      const { data: fans } = await db.from('characters').select('id, sym, event_key').eq('manga_id', mid)
+      const fresh = (fans || []).filter(f => f.event_key !== key)
+      if (fresh.length) {
+        await db.from('characters').update({ event_key: key, event_label: `${mt} ch ${b.chapter}`, event_until: new Date(Date.now() + 86400000).toISOString() }).in('id', fresh.map(f => f.id))
+        await db.from('news').insert({ char_id: fresh[0].id, up: true, source: 'manga',
+          text: `CHAPTER DAY: ${mt.toUpperCase()} CH ${b.chapter} IS OUT. ${fresh.slice(0, 4).map(f => f.sym).join(', ')} get a 24h hype boost` })
+      }
+    } else if (b.chapter && !prev?.last_chapter) row.last_chapter = b.chapter
+    await db.from('manga_buzz').upsert(row)
+    buzz[mid] = row
+  }
+  const mangaList = [...releasing]
+  for (let k = 0; k < mangaList.length; k += 3) { await Promise.all(mangaList.slice(k, k + 3).map(doManga)); await sleep(1000) }
 
   const results: any[] = []
   const one = async (c: any) => {
@@ -270,6 +325,14 @@ async function collect(chunkArg?: number) {
       }
     }
 
+    const mb = c.manga_id && c.manga_status === 'RELEASING' ? buzz[c.manga_id] : null
+    if (mb && mb.posts_24h != null) {
+      const ratio = ((mb.posts_24h + 1) / (+mb.base_posts + 1) + (mb.score_24h + 10) / (+mb.base_score + 10)) / 2
+      const freshCh = mb.chapter_at && Date.now() - new Date(mb.chapter_at).getTime() < 48 * 3600000
+      raw.manga_posts = mb.posts_24h
+      parts.manga = { score: Math.min(1, score(ratio) + (freshCh ? 0.4 : 0)),
+        label: freshCh ? `${mb.title} ch ${mb.last_chapter} just dropped` : `${mb.posts_24h} chapter posts today` }
+    }
     // keep previous readings for sources not polled this hour so the "why" panel stays full
     const prevParts = c.hype_parts || {}
     for (const k of Object.keys(WEIGHTS)) if (!parts[k] && prevParts[k]) parts[k] = prevParts[k]

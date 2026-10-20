@@ -340,7 +340,9 @@ const eventScore = c => (isIpo(c) ? 2 : 0) + (isEvent(c) ? 1 : 0)
 function Badges({ c, big }) {
   return <>
     {isIpo(c) && <span className={`badge ipo ${big ? 'big' : ''}`} title="New listing: +15% hype for 48h">IPO</span>}
-    {isEvent(c) && <span className={`badge ep ${big ? 'big' : ''}`} title={`Episode day: ${c.event_label}`}>🎬 {big ? c.event_label : 'EP DAY'}</span>}
+    {isEvent(c) && (c.event_key?.startsWith('m')
+      ? <span className={`badge ch ${big ? 'big' : ''}`} title={`Chapter day: ${c.event_label}`}>📚 {big ? c.event_label : 'CH DAY'}</span>
+      : <span className={`badge ep ${big ? 'big' : ''}`} title={`Episode day: ${c.event_label}`}>🎬 {big ? c.event_label : 'EP DAY'}</span>)}
   </>
 }
 
