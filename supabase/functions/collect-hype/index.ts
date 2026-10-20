@@ -166,8 +166,18 @@ async function franchise(titles: string[] = [], min = 150) {
   const errors: string[] = []
   let saved = 0
   for (let k = 0; k < rows.length; k += 100) {
-    const { error } = await db.from('characters').insert(rows.slice(k, k + 100))
-    if (error) errors.push(error.message); else saved += Math.min(100, rows.length - k)
+    const batch = rows.slice(k, k + 100)
+    const { error } = await db.from('characters').insert(batch)
+    if (!error) { saved += batch.length; continue }
+    // one clash spoils the whole batch: retry one by one, renumbering tickers that are taken
+    for (const r of batch) {
+      for (let n = 1; n <= 9; n++) {
+        const { error: e } = await db.from('characters').insert(n === 1 ? r : { ...r, sym: r.sym.slice(0, 5) + n })
+        if (!e) { saved++; break }
+        if (e.message.includes('characters_pkey')) break       // already listed
+        if (!e.message.includes('sym')) { errors.push(e.message); break }
+      }
+    }
   }
   return { found: rows.length, saved, errors, byTitle: added }
 }
