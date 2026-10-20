@@ -3,12 +3,15 @@ import { fetchMediaDetail, title } from './api.js'
 import { sb } from './cloud.js'
 import { coins } from './market.js'
 import { StatusPicker } from './App.jsx'
+import { useEpisodeRatings, EpisodeSection, EpisodeModal } from './Episodes.jsx'
 
 const CATS = ['Story', 'Animation', 'Characters', 'Music', 'Peak moments']
 const clean = html => (html || '').replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]+>/g, '').replace(/\n{3,}/g, '\n\n').trim()
 const countdown = s => s < 86400 ? `${Math.floor(s / 3600)}h ${Math.floor((s % 3600) / 60)}m` : `${Math.floor(s / 86400)}d ${Math.floor((s % 86400) / 3600)}h`
 
-export default function Detail({ id, list, setStatus, setProgress, openRating, overall, friends = [], openAnime, openProfile }) {
+export default function Detail({ id, list, setStatus, setProgress, openRating, overall, friends = [], openAnime, openProfile, me }) {
+  const { rows: epRows, reload: reloadEps } = useEpisodeRatings(id, me)
+  const [rateEp, setRateEp] = useState(null)
   const [m, setM] = useState(null)
   const [err, setErr] = useState('')
   const [more, setMore] = useState(false)
@@ -42,6 +45,7 @@ export default function Detail({ id, list, setStatus, setProgress, openRating, o
 
   return (
     <div className="detail">
+      {rateEp && <EpisodeModal m={m} ep={rateEp} me={me} friends={friends} onClose={() => setRateEp(null)} onSaved={reloadEps} />}
       <div className="dbanner" style={{ backgroundImage: `url(${m.bannerImage || m.coverImage.large})` }} />
       <div className="dhead">
         <img className="dcover" src={m.coverImage.large} alt="" />
@@ -82,6 +86,7 @@ export default function Detail({ id, list, setStatus, setProgress, openRating, o
             <h3>Trailer</h3>
             <div className="dtrailer"><iframe src={`https://www.youtube-nocookie.com/embed/${m.trailer.id}`} title="Trailer" allowFullScreen loading="lazy" /></div>
           </>}
+          <EpisodeSection m={m} me={me} friends={friends} rows={epRows} onRate={setRateEp} />
           <h3>Characters</h3>
           <div className="dchars">
             {m.characters.edges.map(({ role, node }) => {

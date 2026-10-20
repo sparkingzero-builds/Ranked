@@ -4,6 +4,7 @@ import { ANILIST_CLIENT_ID, connectAniList, disconnectAniList, getToken, saveToA
 import Stats from './Stats.jsx'
 import Market from './Market.jsx'
 import Detail from './Detail.jsx'
+import { EpisodeModal } from './Episodes.jsx'
 import Season, { currentSeason } from './Season.jsx'
 import CharRank from './CharRank.jsx'
 import { Bell, Squad, Profile } from './Social.jsx'
@@ -133,8 +134,10 @@ function Main({ me, setMe }) {
   const [animeId, setAnimeId] = useState(null)
   const openAnime = id => { setAnimeId(id); setPage('anime') }
   // +1 episode: finishing the last episode marks it Finished; starting a planned show marks it Watching
+  const [epPrompt, setEpPrompt] = useState(null)
   const setProgress = (m, n) => {
     const cur = list.find(e => e.media.id === m.id)
+    if (n > (cur?.progress || 0)) setEpPrompt({ m: cur?.media?.coverImage ? { ...cur.media, ...m } : m, ep: Math.min(n, m.episodes || cur?.media?.episodes || n) })
     const eps = m.episodes || cur?.media?.episodes
     let status = cur?.status && cur.status !== 'PLANNING' ? cur.status : 'CURRENT'
     if (eps && n >= eps) { status = 'COMPLETED'; n = eps }
@@ -205,6 +208,7 @@ function Main({ me, setMe }) {
         </>}
       </main>
       {flashMsg && <div className="flash">{flashMsg}</div>}
+      {epPrompt && <EpisodeModal m={epPrompt.m} ep={epPrompt.ep} me={me} friends={friends} onClose={() => setEpPrompt(null)} />}
       {toast && <div className="toast"><span>{toast.icon}</span><div><b>Achievement unlocked</b>{toast.label}: {toast.desc}</div></div>}
       {rating && <RatingModal m={rating} value={ratings[rating.id] || {}} onClose={() => setRating(null)}
         onSave={v => {
