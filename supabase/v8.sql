@@ -15,3 +15,11 @@ create table if not exists manga_buzz (
 );
 alter table manga_buzz enable row level security;
 create policy "read manga buzz" on manga_buzz for select to authenticated using (true);
+
+-- v8b: sources that actually answer from the cloud (MangaDex, Wikipedia, AniList trending)
+alter table manga_buzz add column if not exists md_id text;
+alter table manga_buzz add column if not exists wiki_title text;
+alter table manga_buzz add column if not exists views_ratio numeric;
+alter table manga_buzz add column if not exists trending int;
+alter table manga_buzz add column if not exists base_trending numeric;
+alter table manga_buzz add column if not exists chapter_published timestamptz;

@@ -152,17 +152,35 @@ async function wiki(c: any) {
   return { raw: latest, ratio: latest / base }
 }
 
-// Manga chatter: Reddit posts about "<manga> chapter" in the last day, their upvotes, and the newest
-// chapter number mentioned in titles (needs 2+ posts agreeing so one random number can't fake a release).
-async function mangaBuzz(title: string) {
-  const q = encodeURIComponent(`"${title}" chapter`)
-  const r = await json(`https://www.reddit.com/search.json?q=${q}&sort=new&t=day&limit=100&raw_json=1`)
-  if (!r?.data) return null
-  const posts = r.data.children.map((c: any) => c.data)
-  const counts: Record<number, number> = {}
-  for (const p of posts) for (const m of (p.title as string).matchAll(/\b(?:chapter|ch\.?)\s*#?(\d{1,4})\b/gi)) counts[+m[1]] = (counts[+m[1]] || 0) + 1
-  const confirmed = Object.entries(counts).filter(([, n]) => n >= 2).map(([ch]) => +ch)
-  return { posts: posts.length, score: posts.reduce((a: number, p: any) => a + (p.score || 0), 0), chapter: confirmed.length ? Math.max(...confirmed) : null }
+// Reddit (403 from Supabase servers) and Jikan/MAL (always times out) don't answer from the cloud, so they're switched off.
+const REDDIT_ON = false, MAL_ON = false
+
+// Manga buzz from sources that do answer: MangaDex (official chapter releases + dates),
+// Wikipedia page views of the manga (people looking it up) and AniList's manga trending score.
+async function mangaDexLatest(title: string, mdId?: string) {
+  let id = mdId
+  if (!id) {
+    const m = await json(`https://api.mangadex.org/manga?limit=1&order%5Brelevance%5D=desc&title=${encodeURIComponent(title)}`)
+    id = m?.data?.[0]?.id
+  }
+  if (!id) return null
+  const c = await json(`https://api.mangadex.org/chapter?manga=${id}&limit=1&order%5BpublishAt%5D=desc&translatedLanguage%5B%5D=en&includeExternalUrl=1`)
+  const a = c?.data?.[0]?.attributes
+  return { id, chapter: a?.chapter ? Math.floor(+a.chapter) : null, published: a?.publishAt || null }
+}
+
+async function mangaViews(title: string, wikiTitle?: string) {
+  let t = wikiTitle
+  if (!t) {
+    const r = await json(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(title + ' manga')}&srlimit=1&format=json`)
+    t = r?.query?.search?.[0]?.title
+  }
+  if (!t) return null
+  const end = new Date(Date.now() - 86400000), start = new Date(Date.now() - 30 * 86400000)
+  const r = await json(`https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/${encodeURIComponent(t.replace(/ /g, '_'))}/daily/${ymd(start)}/${ymd(end)}`)
+  const v = (r?.items || []).map((i: any) => i.views)
+  if (v.length < 7) return { wiki: t, ratio: null }
+  return { wiki: t, ratio: v[v.length - 1] / (median(v.slice(0, -2)) || 1) }
 }
 
 async function reddit(c: any) {
@@ -220,7 +238,7 @@ async function collect(chunkArg?: number) {
   for (let k = 0; k < ids.length; k += 50) {
     const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
       media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { id status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } }
-      manga: media(type:MANGA, perPage:1, sort:POPULARITY_DESC){ nodes { id status title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
+      manga: media(type:MANGA, perPage:1, sort:POPULARITY_DESC){ nodes { id status trending title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
     for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
   }
 
@@ -245,26 +263,34 @@ async function collect(chunkArg?: number) {
   const buzz: Record<number, any> = Object.fromEntries((buzzRows || []).map(b => [b.manga_id, b]))
   const releasing = new Map<number, string>()
   for (const c of all) if (c.manga_id && c.manga_status === 'RELEASING' && c.manga_id % CHUNKS === chunk) releasing.set(c.manga_id, c.manga_title)
+  const mangaTrend: Record<number, number> = {}
+  for (const c of chars) { const mg = alBy[c.id]?.manga?.nodes?.[0]; if (mg) mangaTrend[mg.id] = mg.trending || 0 }
   const doManga = async ([mid, mt]: [number, string]) => {
-    const b = await mangaBuzz(mt)
-    if (!b) return
     const prev = buzz[mid]
-    const row: any = { manga_id: mid, title: mt, posts_24h: b.posts, score_24h: b.score, updated_at: new Date().toISOString(),
-      base_posts: prev?.base_posts != null ? +prev.base_posts * 0.9 + b.posts * 0.1 : b.posts,
-      base_score: prev?.base_score != null ? +prev.base_score * 0.9 + b.score * 0.1 : b.score,
-      last_chapter: prev?.last_chapter ?? b.chapter, chapter_at: prev?.chapter_at ?? null }
-    // Chapter day: a newer chapter than we've seen before (first sighting just sets the baseline)
-    if (b.chapter && prev?.last_chapter && b.chapter > prev.last_chapter && b.chapter <= prev.last_chapter + 3) {
-      row.last_chapter = b.chapter; row.chapter_at = new Date().toISOString()
-      const key = `m${mid}-${b.chapter}`
-      const { data: fans } = await db.from('characters').select('id, sym, event_key').eq('manga_id', mid)
-      const fresh = (fans || []).filter(f => f.event_key !== key)
-      if (fresh.length) {
-        await db.from('characters').update({ event_key: key, event_label: `${mt} ch ${b.chapter}`, event_until: new Date(Date.now() + 86400000).toISOString() }).in('id', fresh.map(f => f.id))
-        await db.from('news').insert({ char_id: fresh[0].id, up: true, source: 'manga',
-          text: `CHAPTER DAY: ${mt.toUpperCase()} CH ${b.chapter} IS OUT. ${fresh.slice(0, 4).map(f => f.sym).join(', ')} get a 24h hype boost` })
+    const [md, wv] = await Promise.all([mangaDexLatest(mt, prev?.md_id), mangaViews(mt, prev?.wiki_title)])
+    const trend = mangaTrend[mid] ?? prev?.trending ?? null
+    const row: any = { manga_id: mid, title: mt, updated_at: new Date().toISOString(),
+      md_id: md?.id ?? prev?.md_id ?? null, wiki_title: wv?.wiki ?? prev?.wiki_title ?? null,
+      views_ratio: wv?.ratio ?? prev?.views_ratio ?? null,
+      trending: trend, base_trending: trend == null ? prev?.base_trending ?? null : prev?.base_trending != null ? +prev.base_trending * 0.9 + trend * 0.1 : trend,
+      last_chapter: prev?.last_chapter ?? null, chapter_at: prev?.chapter_at ?? null, chapter_published: prev?.chapter_published ?? null }
+    if (md?.chapter && md.published) {
+      const isNew = !prev?.last_chapter || md.chapter > prev.last_chapter
+      const recent = Date.now() - new Date(md.published).getTime() < 36 * 3600000
+      if (isNew) { row.last_chapter = md.chapter; row.chapter_published = md.published }
+      // Chapter day: a newer official chapter released in the last 36h
+      if (isNew && recent) {
+        row.chapter_at = new Date().toISOString()
+        const key = `m${mid}-${md.chapter}`
+        const { data: fans } = await db.from('characters').select('id, sym, event_key').eq('manga_id', mid)
+        const fresh = (fans || []).filter(f => f.event_key !== key)
+        if (fresh.length) {
+          await db.from('characters').update({ event_key: key, event_label: `${mt} ch ${md.chapter}`, event_until: new Date(new Date(md.published).getTime() + 36 * 3600000).toISOString() }).in('id', fresh.map(f => f.id))
+          await db.from('news').insert({ char_id: fresh[0].id, up: true, source: 'manga',
+            text: `CHAPTER DAY: ${mt.toUpperCase()} CH ${md.chapter} IS OUT. ${fresh.slice(0, 4).map(f => f.sym).join(', ')} get a hype boost` })
+        }
       }
-    } else if (b.chapter && !prev?.last_chapter) row.last_chapter = b.chapter
+    }
     await db.from('manga_buzz').upsert(row)
     buzz[mid] = row
   }
@@ -281,11 +307,11 @@ async function collect(chunkArg?: number) {
     if (w) { raw.wiki = w.raw; parts.wiki = { score: score(w.ratio), label: `${Math.round((w.ratio - 1) * 100)}% vs normal` } }
 
     // rate-limited sources rotate: each character gets a turn every few hours
-    if (i % 5 === hour % 5) {
+    if (REDDIT_ON && i % 5 === hour % 5) {
       const r = await reddit(c); await sleep(1500)
       if (r) { raw.reddit = r.raw; const b = avgOf(c.id, 'reddit'); if (b != null) parts.reddit = { score: score((r.raw + 1) / (b + 1)), label: `${r.raw} posts today` } }
     }
-    if (i % 4 === hour % 4) {
+    if (MAL_ON && i % 4 === hour % 4) {
       const m = await malFavs(c)
       if (m) { raw.mal = m.raw; const last = lastOf(c.id, 'mal'), dAvg = avgOf(c.id, 'mal_delta')
         if (last != null) { raw.mal_delta = m.raw - last; if (dAvg != null) parts.mal = { score: score((raw.mal_delta + 1) / (dAvg + 1)), label: `+${raw.mal_delta} favourites` } } }
@@ -326,12 +352,14 @@ async function collect(chunkArg?: number) {
     }
 
     const mb = c.manga_id && c.manga_status === 'RELEASING' ? buzz[c.manga_id] : null
-    if (mb && mb.posts_24h != null) {
-      const ratio = ((mb.posts_24h + 1) / (+mb.base_posts + 1) + (mb.score_24h + 10) / (+mb.base_score + 10)) / 2
-      const freshCh = mb.chapter_at && Date.now() - new Date(mb.chapter_at).getTime() < 48 * 3600000
-      raw.manga_posts = mb.posts_24h
-      parts.manga = { score: Math.min(1, score(ratio) + (freshCh ? 0.4 : 0)),
-        label: freshCh ? `${mb.title} ch ${mb.last_chapter} just dropped` : `${mb.posts_24h} chapter posts today` }
+    if (mb) {
+      const ratios = [mb.views_ratio, mb.trending != null && mb.base_trending != null ? (mb.trending + 1) / (+mb.base_trending + 1) : null].filter((x: any) => x != null)
+      const freshCh = mb.chapter_published && Date.now() - new Date(mb.chapter_published).getTime() < 48 * 3600000
+      if (ratios.length || freshCh) {
+        const base = ratios.length ? score(ratios.reduce((a: number, b: number) => a + +b, 0) / ratios.length) : 0
+        parts.manga = { score: Math.min(1, base + (freshCh ? 0.4 : 0)),
+          label: freshCh ? `${mb.title} ch ${mb.last_chapter} just dropped` : mb.views_ratio ? `manga page views ${Math.round((mb.views_ratio - 1) * 100)}% vs normal` : `manga trending ${mb.trending}` }
+      }
     }
     // keep previous readings for sources not polled this hour so the "why" panel stays full
     const prevParts = c.hype_parts || {}
