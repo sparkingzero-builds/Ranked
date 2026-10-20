@@ -587,3 +587,12 @@ h3::before { content: ''; width: 8px; height: 22px; background: var(--blue); tra
 .epsquad { margin: 10px 0; background: #00000040; padding: 8px 12px; }
 .epsquad .mini { flex-wrap: wrap; } .epnote { width: 100%; font-size: 12px; color: #d9d4ff; font-style: italic; padding-left: 4px; }
 .badge.ch { background: #f279a8; }
+
+/* ===== performance: avoid repainting the whole page on scroll ===== */
+body { background-attachment: scroll; }
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background: radial-gradient(ellipse at 15% -10%, #5b1fd1aa, transparent 55%), radial-gradient(ellipse at 100% 20%, #ff2e6355, transparent 45%); }
+.nav { backdrop-filter: none; background: #120c30; }
+.srow { content-visibility: auto; contain-intrinsic-size: auto 70px; }
+.rrow, .shop, .fitem { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+.more { width: 100%; margin-top: 10px; }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { sb, fetchAll } from './cloud.js'
 import { coins, pct, change24, powerGap, SOURCES, START_CASH, TICK_MS } from './market.js'
 
@@ -21,7 +21,7 @@ function useMarket(me) {
   async function load() {
     sb.from('market_events').select('*').gt('ends_at', new Date().toISOString()).then(({ data }) => setEvents(data || []))
     const [c, n, w] = await Promise.all([
-      fetchAll(() => sb.from('characters').select('*').order('id')).then(data => ({ data })),
+      fetchAll(() => sb.from('characters').select('id, name, sym, image, media_title, color, price, price_24h, power, p0, base, hype, hype_at, ipo_at, event_until, event_label, event_key, updated_at').order('id')).then(data => ({ data })),
       sb.from('news').select('*').order('created_at', { ascending: false }).limit(40),
       sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(),
     ])
@@ -55,9 +55,7 @@ function MarketLive({ me, friends }) {
   const [view, setView] = useState('market')
   const [sort, setSort] = useState('hype')
   const [q, setQ] = useState('')
-  const [now, setNow] = useState(Date.now())
   const [err, setErr] = useState('')
-  useEffect(() => { const i = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(i) }, [])
 
   const byId = useMemo(() => Object.fromEntries((chars || []).map(c => [c.id, c])), [chars])
   // pin the first stock once so the panel doesn't jump when the list re-sorts on each tick
@@ -69,7 +67,8 @@ function MarketLive({ me, friends }) {
   const holdingsValue = Object.entries(wallet.holdings || {}).reduce((a, [id, h]) => a + (Number(byId[id]?.price) || 0) * h.qty, 0)
   const worth = Number(wallet.cash) + holdingsValue
   const pnl = worth - START_CASH
-  const secsLeft = Math.ceil((TICK_MS - (now % TICK_MS)) / 1000)
+  const [limit, setLimit] = useState(60)
+  useEffect(() => setLimit(60), [q, sort])
 
   async function trade(c, qty) {
     setErr('')
@@ -100,14 +99,14 @@ function MarketLive({ me, friends }) {
       </div></div>
 
       {events.map(e => <div key={e.id} className={`mevent k-${e.kind}`}>
-        <b>{e.title}</b><span>ends in {fmtLeft(new Date(e.ends_at) - now)}</span>
+        <b>{e.title}</b><span>ends in <Ticker fn={() => fmtLeft(new Date(e.ends_at) - Date.now())} /></span>
       </div>)}
 
       <div className="mhud">
         <div className="hudbox"><span>Net worth</span><b>{coins(worth)}</b></div>
         <div className="hudbox"><span>P/L</span><b className={pnl >= 0 ? 'up' : 'down'}>{pnl >= 0 ? '+' : ''}{coins(pnl)}</b></div>
         <div className="hudbox"><span>Cash</span><b>{coins(wallet.cash)}</b></div>
-        <div className="hudbox"><span>Next tick</span><b>{Math.floor(secsLeft / 60)}:{String(secsLeft % 60).padStart(2, '0')}</b></div>
+        <div className="hudbox"><span>Next tick</span><b><Ticker fn={() => { const t = Math.ceil((TICK_MS - (Date.now() % TICK_MS)) / 1000); return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}` }} /></b></div>
         <div className="tabs">
           {[['market', 'Market'], ['portfolio', 'Portfolio'], ['bets', 'Bets'], ['news', 'News'], ['board', 'Leaderboard']].map(([k, l]) =>
             <button key={k} className={view === k ? 'on' : ''} onClick={() => setView(k)}>{l}</button>)}
@@ -125,21 +124,9 @@ function MarketLive({ me, friends }) {
             </select>
           </div>
           <div className="stocks">
-            {list.map(c => {
-              const ch = change24(c), gap = powerGap(c)
-              return (
-                <div key={c.id} className={`srow ${sel === c ? 'sel' : ''}`} onClick={() => setSelId(c.id)}>
-                  <img src={c.image} alt="" />
-                  <div className="sname"><b>{c.name}<Badges c={c} /></b><span className="tick">{c.sym}</span></div>
-                  <Spark pts={sparks[c.id]} up={ch >= 0} />
-                  <div className="sprice"><b>{coins(c.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
-                  <div className={`sgap ${gap > 0.03 ? 'hot' : gap < -0.03 ? 'cold' : ''}`} title="Power vs price: positive means price hasn't caught up yet">
-                    <HypeMeter h={c.hype} /><span>{gap > 0 ? '+' : ''}{(gap * 100).toFixed(0)}%</span>
-                  </div>
-                </div>
-              )
-            })}
+            {list.slice(0, limit).map(c => <StockRow key={c.id} c={c} selected={sel === c} pts={sparks[c.id]} onPick={setSelId} />)}
           </div>
+          {limit < list.length && <MoreSentinel onMore={() => setLimit(l => l + 60)} left={list.length - limit} />}
         </section>
         <aside><StockPanel c={sel} wallet={wallet} trade={trade} /></aside>
       </div>}
@@ -206,7 +193,10 @@ function Chart({ c, hours }) {
   )
 }
 
-function WhyPanel({ c }) {
+function WhyPanel({ c: base }) {
+  const [hp, setHp] = useState(null)
+  useEffect(() => { setHp(null); sb.from('characters').select('hype_parts').eq('id', base.id).single().then(({ data }) => setHp(data?.hype_parts || {})) }, [base.id, base.hype_at])
+  const c = { ...base, hype_parts: hp || {} }
   const parts = Object.entries(c.hype_parts || {})
   return (
     <div className="why">
@@ -520,4 +510,37 @@ function BetCard({ b, byId, entries, names, me, join }) {
       <div className="bsides">{side('a', A, ca)}<div className="bvs">VS</div>{side('b', B, cb)}</div>
     </div>
   )
+}
+
+// re-renders only itself once a second (countdowns), instead of the whole market
+function Ticker({ fn }) {
+  const [, force] = useState(0)
+  useEffect(() => { const i = setInterval(() => force(x => x + 1), 1000); return () => clearInterval(i) }, [])
+  return fn()
+}
+
+const StockRow = memo(function StockRow({ c, selected, pts, onPick }) {
+  const ch = change24(c), gap = powerGap(c)
+  return (
+    <div className={`srow ${selected ? 'sel' : ''}`} onClick={() => onPick(c.id)}>
+      <img src={c.image} alt="" loading="lazy" decoding="async" />
+      <div className="sname"><b>{c.name}<Badges c={c} /></b><span className="tick">{c.sym}</span></div>
+      <Spark pts={pts} up={ch >= 0} />
+      <div className="sprice"><b>{coins(c.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>
+      <div className={`sgap ${gap > 0.03 ? 'hot' : gap < -0.03 ? 'cold' : ''}`} title="Power vs price: positive means price hasn't caught up yet">
+        <HypeMeter h={c.hype} /><span>{gap > 0 ? '+' : ''}{(gap * 100).toFixed(0)}%</span>
+      </div>
+    </div>
+  )
+})
+
+// loads the next batch of rows when it scrolls into view
+function MoreSentinel({ onMore, left }) {
+  const ref = useRef()
+  useEffect(() => {
+    const io = new IntersectionObserver(es => { if (es[0].isIntersecting) onMore() }, { rootMargin: '400px' })
+    io.observe(ref.current)
+    return () => io.disconnect()
+  }, [onMore])
+  return <button ref={ref} className="pill ghost more" onClick={onMore}>Show more ({left} left)</button>
 }

@@ -135,6 +135,38 @@ async function episodes() {
   return { aired: aired.length, notified: rows.length }
 }
 
+// Add whole casts of named series (every season/movie entry), skipping anyone already listed.
+// min = minimum AniList favourites so background extras don't flood the market.
+async function franchise(titles: string[] = [], min = 150) {
+  const { data: existing } = await db.from('characters').select('id, sym')
+  const have = new Set((existing || []).map(c => c.id)), taken = new Set<string>((existing || []).map(c => c.sym))
+  const added: Record<string, number> = {}
+  const rows: any[] = []
+  for (const t of titles) {
+    const d = await anilist(`query($q:String){ Page(perPage:6){ media(search:$q, type:ANIME, sort:POPULARITY_DESC){ title { romaji english } coverImage { color }
+      characters(perPage:25, sort:FAVOURITES_DESC){ nodes { id name { full } image { large } favourites } } } } }`, { q: t })
+    let n = 0
+    for (const m of d?.data?.Page?.media || []) for (const c of m.characters.nodes) {
+      if (have.has(c.id) || c.favourites < min) continue
+      have.add(c.id)
+      const clean = (x: string) => x.replace(/[^A-Za-z]/g, '').toUpperCase()
+      const parts = c.name.full.split(' ').filter(Boolean)
+      let sym = clean(parts[0]).slice(0, 6) || 'CHR'
+      if (taken.has(sym)) sym = (clean(parts[0]).slice(0, 3) + clean(parts[parts.length - 1]).slice(0, 3)) || sym
+      for (let k = 2; taken.has(sym); k++) sym = sym.slice(0, 5) + k
+      taken.add(sym)
+      const p0 = Math.round(2000 + Math.sqrt(c.favourites) * 30), base = +(15 + Math.sqrt(c.favourites) / 2.2).toFixed(2)
+      rows.push({ id: c.id, name: c.name.full, sym, image: c.image.large, favourites: c.favourites,
+        media_title: m.title.english || m.title.romaji, color: m.coverImage.color, p0, base, power: p0, price: base, price_24h: base })
+      n++
+    }
+    added[t] = n
+    await sleep(900)
+  }
+  for (let k = 0; k < rows.length; k += 200) await db.from('characters').insert(rows.slice(k, k + 200))
+  return { added: rows.length, byTitle: added }
+}
+
 async function wikiTitle(c: any) {
   const q = encodeURIComponent(`${c.name} ${c.media_title || ''} character`)
   const r = await json(`https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=${q}&srlimit=1&format=json`)
@@ -335,8 +367,11 @@ async function collect(chunkArg?: number) {
         const live = shows.filter((n: any) => n.status === 'RELEASING' && n.nextAiringEpisode)
           .sort((x: any, y: any) => x.nextAiringEpisode.timeUntilAiring - y.nextAiringEpisode.timeUntilAiring)[0]
         const showName = live ? (live.title.english || live.title.romaji) : ''
-        // weekly show: under 5 days until the next episode means one dropped in the last ~2 days
-        const fresh = live && live.nextAiringEpisode.timeUntilAiring > 5 * 86400
+        // weekly show: 5 to 7.2 days until the next episode means one dropped in the last ~2 days.
+        // A next episode weeks/months away means the show is on break (e.g. One Piece between seasons).
+        const until = live ? live.nextAiringEpisode.timeUntilAiring : 0
+        const onBreak = live && until > 8 * 86400
+        const fresh = live && !onBreak && until > 5 * 86400
         // Episode day: first scan after a new episode starts a 24h boost (applied in market_tick) and a headline
         if (fresh) {
           const ep = live.nextAiringEpisode.episode - 1, key = `${live.id}-${ep}`
@@ -345,9 +380,10 @@ async function collect(chunkArg?: number) {
             await db.from('news').insert({ char_id: c.id, up: true, source: 'airing', text: `EPISODE DAY: ${showName.toUpperCase()} EP ${ep} IS OUT. $${c.sym} gets a 24h hype boost` })
           }
         }
-        parts.airing = live
-          ? { score: fresh ? 0.6 : 0.25, label: fresh ? `${showName} ep ${live.nextAiringEpisode.episode - 1} just dropped` : `${showName} airing, ep ${live.nextAiringEpisode.episode} next` }
-          : { score: 0, label: 'not airing' }
+        const backOn = live ? new Date(Date.now() + until * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
+        parts.airing = !live ? { score: 0, label: 'not airing' }
+          : onBreak ? { score: 0, label: `${showName} on break until ${backOn}` }
+          : { score: fresh ? 0.6 : 0.25, label: fresh ? `${showName} ep ${live.nextAiringEpisode.episode - 1} just dropped` : `${showName} airing, ep ${live.nextAiringEpisode.episode} next` }
       }
     }
 
@@ -394,6 +430,7 @@ Deno.serve(async req => {
   if (body.mode === 'seed') return Response.json(await seed(body.count))
   if (body.mode === 'ipo') return Response.json(await ipo(body.count))
   if (body.mode === 'episodes') return Response.json(await episodes())
+  if (body.mode === 'franchise') return Response.json(await franchise(body.titles, body.min))
   if (body.mode === 'probe') {
     // which outside sources answer from Supabase's servers (status + first bytes)
     const test = async (name: string, url: string) => {
