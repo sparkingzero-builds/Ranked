@@ -55,6 +55,9 @@ function MarketLive({ me, friends }) {
   const [view, setView] = useState('market')
   const [sort, setSort] = useState('hype')
   const [q, setQ] = useState('')
+  // rows shown; grows as you scroll (hooks must stay above the early returns below)
+  const [limit, setLimit] = useState(60)
+  useEffect(() => setLimit(60), [q, sort])
   const [err, setErr] = useState('')
 
   const byId = useMemo(() => Object.fromEntries((chars || []).map(c => [c.id, c])), [chars])
@@ -67,8 +70,6 @@ function MarketLive({ me, friends }) {
   const holdingsValue = Object.entries(wallet.holdings || {}).reduce((a, [id, h]) => a + (Number(byId[id]?.price) || 0) * h.qty, 0)
   const worth = Number(wallet.cash) + holdingsValue
   const pnl = worth - START_CASH
-  const [limit, setLimit] = useState(60)
-  useEffect(() => setLimit(60), [q, sort])
 
   async function trade(c, qty) {
     setErr('')
