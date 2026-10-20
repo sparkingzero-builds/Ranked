@@ -366,6 +366,20 @@ Deno.serve(async req => {
   if (body.mode === 'seed') return Response.json(await seed(body.count))
   if (body.mode === 'ipo') return Response.json(await ipo(body.count))
   if (body.mode === 'episodes') return Response.json(await episodes())
+  if (body.mode === 'probe') {
+    // which outside sources answer from Supabase's servers (status + first bytes)
+    const test = async (name: string, url: string) => {
+      try { const r = await fetch(url, { headers: UA, signal: AbortSignal.timeout(8000) }); return [name, r.status, (await r.text()).slice(0, 60)] }
+      catch (e) { return [name, 'ERR', String(e).slice(0, 60)] }
+    }
+    return Response.json(await Promise.all([
+      test('reddit', 'https://www.reddit.com/search.json?q=one%20piece%20chapter&t=day&limit=5'),
+      test('reddit_old', 'https://old.reddit.com/r/OnePiece/new.json?limit=5'),
+      test('jikan', 'https://api.jikan.moe/v4/characters?q=luffy&limit=1'),
+      test('mangadex', 'https://api.mangadex.org/manga?title=one%20piece&limit=1'),
+      test('wiki', 'https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia/all-access/user/One_Piece/daily/20261010/20261019'),
+    ]))
+  }
   // answer the scheduler straight away and keep scanning in the background
   // @ts-ignore EdgeRuntime is provided by Supabase
   EdgeRuntime.waitUntil(collect(body.chunk))
