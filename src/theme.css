@@ -596,3 +596,30 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .srow { content-visibility: auto; contain-intrinsic-size: auto 70px; }
 .rrow, .shop, .fitem { content-visibility: auto; contain-intrinsic-size: auto 120px; }
 .more { width: 100%; margin-top: 10px; }
+
+/* ===== Hypest Moment Ever ===== */
+.hintro { max-width: 980px; }
+.hintro p { color: #d9d4ff; font-size: 16px; max-width: 680px; }
+.hgrid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; margin: 16px 0 20px; }
+.hgrid img { width: 100%; aspect-ratio: 16/9; object-fit: cover; clip-path: polygon(0 0, 100% 0, 100% 80%, 90% 100%, 0 100%); }
+.hmatch { max-width: 1000px; margin: 0 auto; }
+.hhead { margin-bottom: 14px; gap: 20px; } .hprog { flex: 1; max-width: 400px; height: 10px; background: #ffffff14; transform: skewX(-20deg); }
+.hprog div { height: 100%; background: var(--legend); }
+.hvs { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; position: relative; margin-bottom: 16px; }
+.hvs .bvs { position: absolute; left: 50%; top: 35%; transform: translate(-50%, -50%); font-size: 40px; text-shadow: 3px 3px 0 #000; }
+.hcard { background: linear-gradient(145deg, #1d1645, #120d30); padding: 8px; opacity: .55; transition: opacity .2s, transform .2s; }
+.hcard.now { opacity: 1; transform: translateY(-4px); box-shadow: 0 0 0 3px var(--blue), 0 0 30px #ffd60a44; }
+.hcard img { width: 100%; aspect-ratio: 16/9; object-fit: cover; }
+.hcard b { display: block; color: #fff; font-family: var(--display); font-weight: 400; font-size: 20px; text-transform: uppercase; margin-top: 6px; }
+.hcard span { color: #a49ccf; font-size: 12px; }
+.hclip { background: #000; padding: 6px; }
+.hvideo { aspect-ratio: 16/9; width: 100%; } .hvideo iframe { width: 100%; height: 100%; border: 0; }
+.hcliprow { padding: 6px 4px 0; }
+.hvote { text-align: center; padding: 24px; background: linear-gradient(145deg, #261d57, #120d30); }
+.hvote .row { justify-content: center; margin-top: 12px; flex-wrap: wrap; }
+.hpick { font-size: 18px; padding: 12px 22px; }
+.hchamp { background-size: cover; background-position: center; }
+.mega.sm { font-size: clamp(36px, 6vw, 70px); }
+.hthumb { width: 52px !important; height: 30px !important; object-fit: cover; }
+@media (max-width: 700px) { .hvs { grid-template-columns: 1fr 1fr; gap: 12px; } .hgrid { grid-template-columns: repeat(4, 1fr); } .hcard b { font-size: 14px; } }
+.hmatch .hvs { margin: 14px 0 0; } .hmatch .hcard img { max-height: 120px; }

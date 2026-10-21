@@ -4,6 +4,7 @@ import { ANILIST_CLIENT_ID, connectAniList, disconnectAniList, getToken, saveToA
 import Stats from './Stats.jsx'
 import Market from './Market.jsx'
 import Detail from './Detail.jsx'
+import HypeBracket from './HypeBracket.jsx'
 import { EpisodeModal } from './Episodes.jsx'
 import Season, { currentSeason } from './Season.jsx'
 import CharRank from './CharRank.jsx'
@@ -400,7 +401,18 @@ function AnimeRankings({ list, media, rankings, setRankings, overall, openRating
   )
 }
 
-function HeadToHead({ list, elo, setElo }) {
+function HeadToHead(props) {
+  const [mode, setMode] = useState('hype')
+  return <>
+    <div className="tabs kindtabs">
+      <button className={mode === 'hype' ? 'on' : ''} onClick={() => setMode('hype')}>🔥 Hypest Moment Ever</button>
+      <button className={mode === 'anime' ? 'on' : ''} onClick={() => setMode('anime')}>Anime vs Anime</button>
+    </div>
+    {mode === 'hype' ? <HypeBracket me={props.me} friends={props.friends} /> : <AnimeH2H {...props} />}
+  </>
+}
+
+function AnimeH2H({ list, elo, setElo }) {
   const pool = list.filter(e => e.status === 'COMPLETED' || e.status === 'CURRENT').map(e => e.media)
   const pick = () => {
     if (pool.length < 2) return []
