@@ -16,6 +16,7 @@ export const MOMENTS = [
   { id: 'cell', f: F.db, title: 'Gohan kills Cell (Father-Son Kamehameha)', anime: 'Dragon Ball Z', clips: ['xcz05iRlqtA'] },
   { id: 'vegeta', f: F.db, title: "Majin Vegeta's sacrifice", anime: 'Dragon Ball Z', clips: ['Jdcgx_aEEtQ'] },
   { id: 'ui', f: F.db, title: 'Goku masters Ultra Instinct vs Jiren', anime: 'Dragon Ball Super', clips: ['6CF29TtxU2c', 'ri7i_utRzmQ'] },
+  { id: 'ssj4', f: F.db, title: 'Goku goes Super Saiyan 4 for the first time', anime: 'Dragon Ball GT', clips: ['4CIvw-HEvT0'] },
   { id: 'galick', f: F.db, title: 'Kamehameha vs Galick Gun', anime: 'Dragon Ball Z', clips: ['Eo1SzVoa4AU', 'JNhlsJ1yrBE'] },
   { id: 'beast', f: F.db, title: 'Gohan goes Beast vs Cell Max', anime: 'Dragon Ball Super: Super Hero', clips: ['Z8lP_6Iq9F8', '6js5QYX2vr0'] },
   // Naruto
