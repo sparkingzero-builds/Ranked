@@ -4,7 +4,8 @@ import { sb, logActivity } from './cloud.js'
 
 // round name from how many moments are still in it
 const roundName = n => n === 2 ? 'Final' : n === 4 ? 'Semi-finals' : n === 8 ? 'Quarter-finals' : `Round of ${n}`
-const bracketSize = n => n >= 32 ? 32 : n >= 16 ? 16 : n >= 8 ? 8 : n >= 4 ? 4 : 0
+const SIZES = [8, 16, 32, 64, 128]
+const SIZE_KEY = 'ranked.hype.size'
 const PICKED = 'ranked.hype.franchises'
 const RUN = 'ranked.hype.run'
 const DONE = 'ranked.hype.done'
@@ -148,7 +149,9 @@ export default function HypeBracket({ me, friends = [] }) {
 function Intro({ onStart }) {
   const [on, setOn] = useState(() => new Set(load(PICKED) || FRANCHISES))
   const pool = MOMENTS.filter(m => on.has(m.f))
-  const size = bracketSize(pool.length)
+  const [want, setWant] = useState(() => load(SIZE_KEY) || 32)
+  // biggest allowed size that the ticked anime can fill (falls back to 4 for tiny picks)
+  const size = pool.length >= want ? want : [...SIZES].reverse().find(n => n <= pool.length) || (pool.length >= 4 ? 4 : 0)
   const toggle = f => { const n = new Set(on); n.has(f) ? n.delete(f) : n.add(f); setOn(n); save(PICKED, [...n]) }
   const all = v => { const n = new Set(v ? FRANCHISES : []); setOn(n); save(PICKED, [...n]) }
   return (
@@ -164,9 +167,12 @@ function Intro({ onStart }) {
           return <label key={f} className={`hf ${on.has(f) ? 'on' : ''}`}><input type="checkbox" checked={on.has(f)} onChange={() => toggle(f)} /><span>{f}</span><small>{n}</small></label>
         })}
       </div>
+      <div className="row hpickhead"><b>Bracket size</b></div>
+      <div className="tabs hsizes">{SIZES.map(n => <button key={n} disabled={pool.length < n} className={size === n ? 'on' : ''}
+        onClick={() => { setWant(n); save(SIZE_KEY, n) }}>{n}</button>)}</div>
       <div className="hgrid">{pool.slice(0, 32).map(m => <img key={m.id} src={thumb(m)} alt={m.title} title={m.title} loading="lazy" />)}</div>
       <div className="row hstart">
-        <span className="muted">{pool.length} moments ticked{size ? ` → ${size}-moment bracket (${size - 1} matchups)` : ' (tick at least 4 to play)'}</span>
+        <span className="muted">{pool.length} moments ticked{size ? ` → ${size}-moment bracket (${size - 1} matchups, ~${Math.round((size - 1) * 2 * 2.5 / 60 * 10) / 10}h if you watch every clip)` : ' (tick at least 4 to play)'}</span>
         <button className="pill lgo" disabled={!size} onClick={() => onStart(shuffle(pool.map(m => m.id)).slice(0, size))}>Start the bracket</button>
       </div>
     </div>
