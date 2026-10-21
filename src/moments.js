@@ -1,4 +1,5 @@
 // Hype moments, grouped by franchise so players can pick only anime they've seen.
+// Official uploads come first (Crunchyroll, then VIZ / Netflix / Pokémon / Prime Video); unofficial ones are backups.
 // Clips are straight scene uploads (no AMVs, TikTok edits, music swaps or Shorts), 1 to 4 minutes long.
 // Each has a few YouTube clips: the player uses the first one that plays
 // (uploaders sometimes block embedding or delete videos), so backups keep the bracket working.
@@ -14,12 +15,12 @@ export const MOMENTS = [
   { id: 'ssj', f: F.db, title: "Goku's first Super Saiyan", anime: 'Dragon Ball Z', clips: ['c7jvWOfwc1M', '_qNmE0xQgfI'] },
   { id: 'cell', f: F.db, title: 'Gohan kills Cell (Father-Son Kamehameha)', anime: 'Dragon Ball Z', clips: ['xcz05iRlqtA'] },
   { id: 'vegeta', f: F.db, title: "Majin Vegeta's sacrifice", anime: 'Dragon Ball Z', clips: ['Jdcgx_aEEtQ'] },
-  { id: 'ui', f: F.db, title: 'Goku masters Ultra Instinct vs Jiren', anime: 'Dragon Ball Super', clips: ['ri7i_utRzmQ'] },
+  { id: 'ui', f: F.db, title: 'Goku masters Ultra Instinct vs Jiren', anime: 'Dragon Ball Super', clips: ['6CF29TtxU2c', 'ri7i_utRzmQ'] },
   { id: 'galick', f: F.db, title: 'Kamehameha vs Galick Gun', anime: 'Dragon Ball Z', clips: ['Eo1SzVoa4AU', 'JNhlsJ1yrBE'] },
   { id: 'beast', f: F.db, title: 'Gohan goes Beast vs Cell Max', anime: 'Dragon Ball Super: Super Hero', clips: ['Z8lP_6Iq9F8', '6js5QYX2vr0'] },
   // Naruto
   { id: 'pain', f: F.naruto, title: 'Naruto arrives in Sage Mode vs Pain', anime: 'Naruto Shippuden', clips: ['PXeSdf4lkvs', 'x2yepfJKRy0'] },
-  { id: 'lee', f: F.naruto, title: 'Rock Lee opens the gates vs Gaara', anime: 'Naruto', clips: ['ia6DnOe0Sjg'] },
+  { id: 'lee', f: F.naruto, title: 'Rock Lee opens the gates vs Gaara', anime: 'Naruto', clips: ['pi6ICtn9S4U', 'ia6DnOe0Sjg'] },
   { id: 'guy', f: F.naruto, title: "Might Guy's Night Guy vs Madara", anime: 'Naruto Shippuden', clips: ['98yvX9wY7J0', 'fp7VyLWbF1I'] },
   { id: 'minato', f: F.naruto, title: 'Minato vs Obito', anime: 'Naruto Shippuden', clips: ['Llr2dcd-VBo'] },
   { id: 'momoshiki', f: F.naruto, title: 'Boruto defeats Momoshiki', anime: 'Boruto', clips: ['RzClCJFpSoM', 'sTbM1i-3HS8'] },
@@ -42,9 +43,9 @@ export const MOMENTS = [
   { id: 'yami', f: F.bc, title: "Yami's Dark Cloaked Dimension Slash", anime: 'Black Clover', clips: ['KXiSdblIUzs', 'vrzCvc_klPw'] },
   { id: 'liebe', f: F.bc, title: 'Asta vs Liebe', anime: 'Black Clover', clips: ['QXOvFJo4jVY', 'vf4AvouYtzw'] },
   // Attack on Titan
-  { id: 'levi', f: F.aot, title: 'Levi vs the Beast Titan', anime: 'Attack on Titan', clips: ['F0sqfPkCcyM', 'RM-e-U0N2F0'] },
+  { id: 'levi', f: F.aot, title: 'Levi vs the Beast Titan', anime: 'Attack on Titan', clips: ['rhjl6UOhcP0', 'F0sqfPkCcyM', 'RM-e-U0N2F0'] },
   { id: 'erwin', f: F.aot, title: "Erwin's final speech and charge", anime: 'Attack on Titan', clips: ['9hh8qaajIXk', 'u-ZBLZATlhM', 'xWhQdt-FafY'] },
-  { id: 'rumbling', f: F.aot, title: 'Eren starts the Rumbling', anime: 'Attack on Titan', clips: ['fdSw6XEcg8I', 'zlB9F7PoX0E'] },
+  { id: 'rumbling', f: F.aot, title: 'Eren starts the Rumbling', anime: 'Attack on Titan', clips: ['KQcWQ46K6HE', 'fdSw6XEcg8I', 'zlB9F7PoX0E'] },
   { id: 'reiner', f: F.aot, title: 'Reiner & Bertholdt reveal themselves', anime: 'Attack on Titan', clips: ['YWzB08wmSYU', 'urvq-f1xvZI'] },
   { id: 'erenfirst', f: F.aot, title: "Eren's first Titan transformation", anime: 'Attack on Titan', clips: ['Uy41ee3ypy8', 'YeTJ3zSsSfg'] },
   // JoJo
@@ -59,8 +60,8 @@ export const MOMENTS = [
   { id: 'unohana', f: F.bleach, title: 'Kenpachi vs Unohana', anime: 'Bleach: Thousand-Year Blood War', clips: ['Onmiy1zG2CY', 'Z9TwAlXaWA8'] },
   { id: 'ulquiorra', f: F.bleach, title: 'Hollow Ichigo vs Ulquiorra', anime: 'Bleach', clips: ['4XCKamWlCEo', 'APUuNvKUaPQ'] },
   // Death Note
-  { id: 'chip', f: F.dn, title: 'Light: "I\'ll take a potato chip… and eat it!"', anime: 'Death Note', clips: ['pn3gPzRU5FY', 'XrpdFmb0EMc'] },
-  { id: 'iaml', f: F.dn, title: 'L: "I am L"', anime: 'Death Note', clips: ['NlQcrBSByZE', '_WdmCGQRiPc'] },
+  { id: 'chip', f: F.dn, title: 'Light: "I\'ll take a potato chip… and eat it!"', anime: 'Death Note', clips: ['perPAMpnvKk', 'pn3gPzRU5FY'] },
+  { id: 'iaml', f: F.dn, title: 'L: "I am L"', anime: 'Death Note', clips: ['OZbtyy_UF24', 'NlQcrBSByZE'] },
   { id: 'kira', f: F.dn, title: "Light's final speech: \"I am Kira\"", anime: 'Death Note', clips: ['rJMTFP1aDWU', 'Qw60EprX1Tw'] },
   { id: 'ldeath', f: F.dn, title: "L's death", anime: 'Death Note', clips: ['AsPe1Z6E-Oc', 'qkwOiDc1lo4'] },
   // Pokémon
@@ -89,9 +90,9 @@ export const MOMENTS = [
   { id: 'rui', f: F.ds, title: "Tanjiro's Hinokami Kagura vs Rui", anime: 'Demon Slayer', clips: ['R6v9bfsWgXw', 'qH4Om8HNB4c'] },
   { id: 'akaza', f: F.ds, title: 'Tanjiro & Giyu vs Akaza', anime: 'Demon Slayer: Infinity Castle', clips: ['HFAzgHHITVM'] },
   { id: 'boros', f: F.opm, title: "Saitama's Serious Punch vs Boros", anime: 'One Punch Man', clips: ['5EOlj8IaoNM'] },
-  { id: 'gon', f: F.hxh, title: "Gon's transformation vs Pitou", anime: 'Hunter x Hunter', clips: ['O3MYAarX_BI', 'XL2PiVNYD_Y'] },
-  { id: 'netero', f: F.hxh, title: 'Netero vs Meruem', anime: 'Hunter x Hunter', clips: ['Z3Ni0FTufi0'] },
-  { id: 'mob', f: F.mob, title: 'Mob hits 100%', anime: 'Mob Psycho 100', clips: ['2klGKa9ZBHY'] },
+  { id: 'gon', f: F.hxh, title: "Gon's transformation vs Pitou", anime: 'Hunter x Hunter', clips: ['prWR7FXMUDM', 'O3MYAarX_BI'] },
+  { id: 'netero', f: F.hxh, title: 'Netero vs Meruem', anime: 'Hunter x Hunter', clips: ['IDCm4ZDdcBc', 'Z3Ni0FTufi0'] },
+  { id: 'mob', f: F.mob, title: 'Mob hits 100%', anime: 'Mob Psycho 100', clips: ['aT_P7R2ebsQ', '2klGKa9ZBHY'] },
   { id: 'jason', f: F.tg, title: 'Kaneki vs Jason', anime: 'Tokyo Ghoul', clips: ['ZsQnAuh3tZU'] },
   { id: 'natsu', f: F.ft, title: "Natsu's Dragon Force vs Jellal", anime: 'Fairy Tail', clips: ['GB90ct9o9ko', 'no2oaYYbg8I'] },
 ]
