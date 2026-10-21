@@ -722,3 +722,9 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
   .fgrid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); } .fgrid.five { grid-template-columns: repeat(3, 1fr); }
   .fslot { width: 46px; height: 62px; } .flock { font-size: 15px; padding: 10px 14px; } .fmatch { gap: 16px; }
 }
+
+.fmoments { display: grid; gap: 10px; }
+.fmoment { display: flex; gap: 14px; align-items: center; padding: 10px 16px 10px 10px; background: linear-gradient(90deg, #1d1645, #140e35); border-left: 4px solid #3ddc97; }
+.fmoment.neg { border-left-color: #ff4d6d; }
+.fmoment img { width: 54px; height: 70px; object-fit: cover; object-position: center 20%; transform: skewX(-8deg); }
+.fmk { font-family: var(--display); text-transform: uppercase; letter-spacing: 1px; color: #d9d4ff; font-size: 14px; } .fmn { color: #fff; font-size: 16px; }

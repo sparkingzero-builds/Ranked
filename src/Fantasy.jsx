@@ -16,7 +16,6 @@ const KINDS = {
   transform: ['⚡', 'Transformation / power-up'], win: ['🏆', 'Won a fight'], appear: ['👀', 'Appeared'], lose: ['💥', 'Lost a fight'],
   death: ['💀', 'Died'], revive: ['✨', 'Came back'],
 }
-const LOGGABLE = [['transform', 20], ['win', 15], ['appear', 3], ['lose', -5], ['death', -20], ['revive', 0]]
 const pts = n => (n > 0 ? '+' : '') + n
 
 // round-robin pairing that rotates every week
@@ -86,7 +85,6 @@ export default function Fantasy({ me, friends, openProfile }) {
   }, [events])
   const mine = teams.find(t => t.user === me?.id)
   const takenBy = Object.fromEntries(picks.map(p => [p.char_id, p.user_id]))
-  const pending = events.filter(e => e.status === 'pending' && e.season === S.key)
 
   if (!sb || !me) return <div className="card pad muted">Sign in to play the Fantasy League.</div>
   const daysLeft = Math.ceil((S.end - Date.now()) / 86400000)
@@ -113,16 +111,14 @@ export default function Fantasy({ me, friends, openProfile }) {
       {!mine ? <Picker chars={chars} takenBy={takenBy} name={name} onLock={ids => run('fantasy_pick', { p_chars: ids }, () =>
         logActivity('fantasy_team', { season: S.label, names: ids.map(i => byId[i]?.name), cover: byId[ids[0]]?.image }))} /> : <>
         <div className="tabs squadtabs">
-          {[['table', 'Standings'], ['team', 'My team'], ['log', `Log a moment${pending.length ? ` (${pending.length})` : ''}`], ['vote', "Who's hyper?"], ['rules', 'Scoring']].map(([k, l]) =>
+          {[['table', 'Standings'], ['team', 'My team'], ['moments', 'Moments'], ['vote', "Who's hyper?"], ['rules', 'Scoring']].map(([k, l]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
         </div>
         {tab === 'table' && <Standings teams={teams} byId={byId} who={who} me={me} charPts={charPts} dead={dead} openProfile={openProfile} events={live} S={S} />}
         {tab === 'team' && <MyTeam team={mine} byId={byId} chars={chars} takenBy={takenBy} name={name} charPts={charPts} dead={dead}
           events={cur.filter(e => e.team_user === me.id)} swapped={swaps.some(s => s.user_id === me.id && s.week === S.week)}
           onSwap={(o, i) => run('fantasy_swap', { p_out: o, p_in: i })} />}
-        {tab === 'log' && <LogTab picks={picks} byId={byId} name={name} me={me} pending={pending}
-          onLog={(c, k, note, link) => run('fantasy_log', { p_char: c, p_kind: k, p_note: note, p_link: link })}
-          onReview={(id, ok) => run('fantasy_review', { p_id: id, p_ok: ok })} />}
+        {tab === 'moments' && <Moments events={cur.filter(e => e.source === 'bot')} byId={byId} name={name} />}
         {tab === 'vote' && <Vote S={S} teams={teams} byId={byId} name={name} me={me} votes={votes} reload={reload} setErr={setErr} />}
         {tab === 'rules' && <Rules />}
       </>}
@@ -233,36 +229,21 @@ function MyTeam({ team, byId, chars, takenBy, name, charPts, dead, events, swapp
   </div>
 }
 
-function LogTab({ picks, byId, name, me, pending, onLog, onReview }) {
-  const [c, setC] = useState('')
-  const [k, setK] = useState('win')
-  const [note, setNote] = useState('')
-  const [link, setLink] = useState('')
-  return <div className="rank">
-    <section>
-      <div className="card pad">
-        <h2>Log a moment</h2>
-        <p className="muted">Saw a character on someone's team transform, win, lose or die? Log it. It counts once a squad mate who didn't log it confirms.</p>
-        <select value={c} onChange={e => setC(e.target.value)}>
-          <option value="">Choose a character…</option>
-          {picks.map(p => byId[p.char_id] && <option key={p.char_id} value={p.char_id}>{byId[p.char_id].name} ({name(p.user_id)})</option>)}
-        </select>
-        <div className="fkinds">{LOGGABLE.map(([kk, p]) => <button key={kk} className={`btn sm ${k === kk ? 'primary' : ''}`} onClick={() => setK(kk)}>{KINDS[kk][0]} {KINDS[kk][1]} {p ? pts(p) : ''}</button>)}</div>
-        <input placeholder="What happened? e.g. Ep 12, beats Sukuna" maxLength={200} value={note} onChange={e => setNote(e.target.value)} />
-        <input placeholder="Proof link (optional)" maxLength={300} value={link} onChange={e => setLink(e.target.value)} />
-        <button className="btn primary" disabled={!c} onClick={() => { onLog(+c, k, note, link); setNote(''); setLink('') }}>Log it</button>
-      </div>
-    </section>
-    <aside>
-      <h3>Waiting for a second opinion</h3>
-      <div className="card">{pending.map(e => <div key={e.id} className="lrow">
-        <span>{KINDS[e.kind]?.[0]}</span>
-        <div className="grow small"><b>{byId[e.char_id]?.name}</b> {KINDS[e.kind]?.[1].toLowerCase()} <b>{pts(e.points)}</b>
-          <div className="muted">{e.note}{e.link && <> · <a href={e.link} target="_blank" rel="noreferrer">proof</a></>} · logged by {name(e.logged_by)}</div></div>
-        {e.logged_by !== me.id ? <><button className="btn sm primary" onClick={() => onReview(e.id, true)}>✓</button><button className="btn sm" onClick={() => onReview(e.id, false)}>✗</button></>
-          : <span className="muted small">yours</span>}
-      </div>)}{!pending.length && <div className="pad muted small">Nothing waiting.</div>}</div>
-    </aside>
+// fights, power-ups, deaths and appearances are found automatically each day from episode/chapter recaps
+function Moments({ events, byId, name }) {
+  return <div>
+    <p className="muted">Fights, power-ups, deaths and appearances are picked up automatically every day from episode and chapter recaps. Nothing to log.</p>
+    <div className="fmoments">
+      {events.map(e => { const c = byId[e.char_id]; return <div key={e.id} className={`fmoment ${e.points < 0 ? 'neg' : ''}`}>
+        {c && <img src={c.image} alt="" referrerPolicy="origin" />}
+        <div className="grow">
+          <div className="fmk">{KINDS[e.kind]?.[0]} {KINDS[e.kind]?.[1]} <b className={e.points < 0 ? 'down' : 'up'}>{pts(e.points)}</b></div>
+          <b className="fmn">{c?.name}</b> <span className="muted small">· {name(e.team_user)}'s team · wk {e.week}</span>
+          <div className="small">{e.note}{e.link && <> · <a href={e.link} target="_blank" rel="noreferrer">source</a></>}</div>
+        </div>
+      </div> })}
+      {!events.length && <div className="card pad muted">No moments yet. They show up here as drafted characters' episodes and chapters drop.</div>}
+    </div>
   </div>
 }
 
@@ -297,7 +278,7 @@ function Rules() {
   const T = (title, rows) => <div className="card pad"><h3>{title}</h3>{rows.map(([i, l, p]) => <div key={l} className="lrow"><span>{i}</span><div className="grow">{l}</div><b>{p}</b></div>)}</div>
   return <div className="frules">
     {T('Automatic', auto)}
-    {T('Logged by the squad (needs a second person)', squad)}
+    {T('Big moments (found automatically from recaps)', squad)}
     {T('Squad vote', [['🗳️', "Win your weekly \"who's hyper?\" matchup", '+5']])}
     <p className="muted small">Seasons follow the anime seasons. Teams lock for the season with one swap a week. Most points when the season ends takes the crown and a spot in the hall of fame.</p>
   </div>
