@@ -45,7 +45,7 @@ export default function Fantasy({ me, friends, openProfile }) {
 
   useEffect(() => {
     if (!sb) return
-    fetchAll(() => sb.from('characters').select('id, name, image, media_title, color').order('favourites', { ascending: false })).then(setChars).catch(() => {})
+    fetchAll(() => sb.from('characters').select('id, name, image, media_title, color, form').order('favourites', { ascending: false })).then(setChars).catch(() => {})
   }, [])
   useEffect(() => {
     if (!sb) return
@@ -94,12 +94,19 @@ export default function Fantasy({ me, friends, openProfile }) {
   return (
     <div className="fantasy">
       <div className="fhero">
-        <div>
-          <div className="kicker">Fantasy League · {S.label}</div>
-          <h1 className="mega sm">Week {S.week}</h1>
-          <div className="muted">{daysLeft} days left in the season · {teams.length} team{teams.length === 1 ? '' : 's'}</div>
+        <div className="fhero-l">
+          <div className="fkick"><span>Fantasy League</span>{S.label}</div>
+          <h1 className="fweek">Week <b>{S.week}</b></h1>
+          <div className="fchips">
+            <span><b>{daysLeft}</b> days left</span>
+            <span><b>{teams.length}</b> team{teams.length === 1 ? '' : 's'}</span>
+            {mine && <span><b>#{teams.findIndex(t => t.user === me.id) + 1}</b> your rank</span>}
+          </div>
         </div>
-        {mine && <div className="fscore"><b>{mine.total}</b><span>your points</span><em>{pts(mine.week)} this week</em></div>}
+        {mine ? <div className="fscore"><b>{mine.total}</b><span>points</span><em className={mine.week < 0 ? 'down' : 'up'}>{pts(mine.week)} this week</em></div>
+          : <div className="fscore"><b>5</b><span>picks to make</span><em>draft is open</em></div>}
+        <div className="fhero-art">{(mine ? mine.chars : chars.filter(c => c.form).slice(0, 5).map(c => c.id)).map((id, i) => byId[id] &&
+          <img key={id} src={byId[id].image} alt="" referrerPolicy="origin" />)}</div>
       </div>
       {err && <div className="card pad ferr">{err}</div>}
 
@@ -123,11 +130,13 @@ export default function Fantasy({ me, friends, openProfile }) {
   )
 }
 
-function CharTile({ c, sub, on, off, onClick, children }) {
+function CharTile({ c, sub, on, off, onClick, children, big }) {
   if (!c) return null
-  return <div className={`fchar ${on ? 'on' : ''} ${off ? 'off' : ''}`} onClick={off ? undefined : onClick} style={{ '--c': c.color || '#7b5cff' }}>
-    <img src={c.image} alt="" loading="lazy" />
-    <div><b>{c.name}</b><span>{sub ?? c.media_title}</span></div>
+  return <div className={`fchar ${on ? 'on' : ''} ${off ? 'off' : ''} ${big ? 'big' : ''}`} onClick={off ? undefined : onClick} style={{ '--c': c.color || '#7b5cff' }}>
+    <img src={c.image} alt="" loading="lazy" referrerPolicy="origin" />
+    {c.form && <i className="fform">{c.form}</i>}
+    {on && <i className="fcheck">✓</i>}
+    <div className="fcap"><b>{c.name}</b><span>{sub ?? c.media_title}</span></div>
     {children}
   </div>
 }
@@ -138,20 +147,26 @@ function Picker({ chars, takenBy, name, onLock }) {
   const shown = chars.filter(c => !q || (c.name + ' ' + (c.media_title || '')).toLowerCase().includes(q.toLowerCase())).slice(0, 120)
   const toggle = id => setSel(s => s.includes(id) ? s.filter(x => x !== id) : s.length < 5 ? [...s, id] : s)
   const byId = Object.fromEntries(chars.map(c => [c.id, c]))
+  const forms = chars.filter(c => c.form).length
   return <div className="fpick">
-    <div className="card pad">
+    <div className="fintro">
       <h2>Draft your 5</h2>
-      <p className="muted">Pick any 5 characters from any anime. Each character can only be on one team, so first come first served. They score all season from new episodes, chapters, hype and big moments. You get one swap a week.</p>
-      <div className="fslots">
-        {[0, 1, 2, 3, 4].map(i => { const c = byId[sel[i]]; return <div key={i} className="fslot" onClick={() => c && toggle(c.id)}>
-          {c ? <><img src={c.image} alt="" /><b>{c.name}</b></> : <span>{i + 1}</span>}</div> })}
-        <button className="btn primary" disabled={sel.length !== 5} onClick={() => onLock(sel)}>Lock in team</button>
-      </div>
+      <p>Any 5 characters from any anime. Each one can only be on one team, so first come first served. They score all season from new episodes, chapters, hype and big moments. One swap a week.</p>
     </div>
-    <input className="search" placeholder="Search characters or anime…" value={q} onChange={e => setQ(e.target.value)} />
+    <div className="fbar">
+      <input className="search" placeholder="Search characters or anime…" value={q} onChange={e => setQ(e.target.value)} />
+      <span className="muted small">{chars.length} characters · {forms} in their strongest form</span>
+    </div>
     <div className="fgrid">
       {shown.map(c => <CharTile key={c.id} c={c} on={sel.includes(c.id)} off={!!takenBy[c.id]}
         sub={takenBy[c.id] ? `taken by ${name(takenBy[c.id])}` : c.media_title} onClick={() => toggle(c.id)} />)}
+    </div>
+    <div className="fdraft">
+      <div className="fslots">
+        {[0, 1, 2, 3, 4].map(i => { const c = byId[sel[i]]; return <div key={i} className={`fslot ${c ? 'full' : ''}`} onClick={() => c && toggle(c.id)} title={c ? 'Remove' : ''}>
+          {c ? <><img src={c.image} alt="" referrerPolicy="origin" /><b>{c.name}</b></> : <span>{i + 1}</span>}</div> })}
+      </div>
+      <button className="flock" disabled={sel.length !== 5} onClick={() => onLock(sel)}>{sel.length === 5 ? 'Lock in team' : `${5 - sel.length} more to pick`}</button>
     </div>
   </div>
 }
@@ -164,13 +179,14 @@ function Standings({ teams, byId, who, me, charPts, dead, openProfile, events, S
   const feed = events.filter(e => e.season === S.key).slice(0, 25)
   return <div className="rank">
     <section>
-      {teams.map((t, i) => { const p = who(t.user); return <div key={t.user} className={`card fteam ${t.user === me.id ? 'me' : ''}`}>
-        <div className="fpos">{i === 0 ? '👑' : i + 1}</div>
-        <div className="grow">
-          <div className="row"><b className="fname" onClick={() => openProfile(t.user)}>{p?.username || '?'}</b><span className="muted small">{pts(t.week)} this week</span></div>
-          <div className="fmini">{t.chars.map(id => { const c = byId[id]; return c && <span key={id} className={dead[id] ? 'dead' : ''} title={`${c.name}: ${charPts[id] || 0} pts`}>
-            <img src={c.image} alt="" />{charPts[id] || 0}</span> })}</div>
+      {teams.map((t, i) => { const p = who(t.user); return <div key={t.user} className={`fteam r${i + 1} ${t.user === me.id ? 'me' : ''}`}>
+        <div className="fpos">{i + 1}</div>
+        <div className="fwho" onClick={() => openProfile(t.user)}>
+          {p?.avatar ? <img src={p.avatar} alt="" /> : <div className="blank">{(p?.username || '?')[0]}</div>}
+          <div><b>{p?.username || '?'}</b><span className={t.week < 0 ? 'down' : 'up'}>{pts(t.week)} this week</span></div>
         </div>
+        <div className="fline">{t.chars.map(id => { const c = byId[id]; return c && <div key={id} className={`fcard ${dead[id] ? 'dead' : ''}`} title={`${c.name}${c.form ? ` (${c.form})` : ''}`}>
+          <img src={c.image} alt="" loading="lazy" referrerPolicy="origin" /><em>{charPts[id] || 0}</em></div> })}</div>
         <div className="ftotal">{t.total}<small>pts</small></div>
       </div> })}
       {!teams.length && <div className="card pad muted">No teams yet.</div>}
@@ -195,7 +211,7 @@ function MyTeam({ team, byId, chars, takenBy, name, charPts, dead, events, swapp
   return <div className="rank">
     <section>
       <div className="fgrid five">
-        {team.chars.map(id => <CharTile key={id} c={byId[id]} on={out === id} sub={dead[id] ? '💀 dead: scores 0 until they return' : `${charPts[id] || 0} pts`}>
+        {team.chars.map(id => <CharTile key={id} big c={byId[id]} on={out === id} sub={dead[id] ? '💀 dead: scores 0 until they return' : `${charPts[id] || 0} pts`}>
           {!swapped && <button className="btn sm" onClick={() => setOut(out === id ? null : id)}>{out === id ? 'Cancel' : 'Swap'}</button>}
         </CharTile>)}
       </div>
@@ -265,7 +281,7 @@ function Vote({ S, teams, byId, name, me, votes, reload, setErr }) {
       return <div key={a + b} className="card fmatch">
         {[a, b].map((u, i) => <div key={u} className={`fside ${mineVote === u ? 'on' : ''}`}>
           <b>{name(u)}</b>
-          <div className="fmini">{team(u).chars.map(id => byId[id] && <span key={id}><img src={byId[id].image} alt="" title={byId[id].name} /></span>)}</div>
+          <div className="fmini">{team(u).chars.map(id => byId[id] && <span key={id}><img src={byId[id].image} alt="" title={byId[id].name} referrerPolicy="origin" /></span>)}</div>
           {inIt ? <span className="muted small">{n(u)} vote{n(u) === 1 ? '' : 's'}</span> : <button className="btn sm primary" onClick={() => cast(a, b, u)}>{mineVote === u ? 'Voted ✓' : 'Hyper'} · {n(u)}</button>}
         </div>)}
         <div className="bvs">VS</div>
