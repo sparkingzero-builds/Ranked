@@ -72,8 +72,22 @@ export default function HypeBracket({ me, friends = [] }) {
   }, [online, me?.id])
   useEffect(() => { if (run) save(RUN, run) }, [run])
 
+  // start over: wipes the bracket in progress, and your saved champion if you'd finished
+  async function reset() {
+    if (!confirm(played ? 'Reset your bracket? Your champion will be removed and you can play again.' : 'Restart the bracket from the beginning?')) return
+    if (played) {
+      if (online) {
+        const { error } = await sb.from('hype_brackets').delete().eq('user_id', me.id)
+        if (error) return alert(error.message)
+        setAll(a => a.filter(r => r.user_id !== me.id))
+      } else localStorage.removeItem(DONE)
+    }
+    localStorage.removeItem(RUN)
+    setRun(null); setPlayed(false); setPhase('A'); setStarted(false)
+  }
+
   if (played === null) return <div className="loading">Loading…</div>
-  if (played) return <Results mine={played} all={all} friends={friends} me={me} />
+  if (played) return <Results mine={played} all={all} friends={friends} me={me} onReset={reset} />
 
   if (!run) return (
     <div className="card pad hintro">
@@ -116,6 +130,7 @@ export default function HypeBracket({ me, friends = [] }) {
       <div className="row hhead">
         <div><div className="kicker">{ROUNDS[round]}</div><div className="muted small">Match {match + 1} of {entrants.length / 2}</div></div>
         <div className="hprog"><div style={{ width: `${(run.picks.flat().length / 31) * 100}%` }} /></div>
+        <button className="pill ghost" onClick={reset}>↺ Restart</button>
       </div>
       {!started ? <button className="pill lgo" onClick={() => setStarted(true)}>▶ Play the clips</button>
         : phase === 'A' ? <Clip key={'A' + A.id} moment={A} onDone={() => setPhase('B')} />
@@ -134,7 +149,7 @@ export default function HypeBracket({ me, friends = [] }) {
   )
 }
 
-function Results({ mine, all, friends, me }) {
+function Results({ mine, all, friends, me, onReset }) {
   const names = Object.fromEntries(friends.map(f => [f.id, f.username]))
   const champ = MOMENT[mine.champion]
   // squad ranking: every matchup win is a point, a championship is worth 3
@@ -150,7 +165,8 @@ function Results({ mine, all, friends, me }) {
       <div className="slide hero hchamp" style={{ backgroundImage: `linear-gradient(120deg, #ff2e63dd, #8a2be2dd), url(${thumb(champ)})` }}>
         <div className="kicker">Your hypest moment ever</div>
         <div className="mega sm">{champ.title.toUpperCase()}</div>
-        <div className="sub">{champ.anime} · beat {path.filter(Boolean).length} moments to win. Locked in, no re-runs.</div>
+        <div className="sub">{champ.anime} · beat {path.filter(Boolean).length} moments to win.</div>
+        <button className="pill ghost hreset" onClick={onReset}>↺ Reset &amp; play again</button>
       </div>
       <div className="two">
         <div>

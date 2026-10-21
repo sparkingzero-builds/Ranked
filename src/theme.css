@@ -623,3 +623,4 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .hthumb { width: 52px !important; height: 30px !important; object-fit: cover; }
 @media (max-width: 700px) { .hvs { grid-template-columns: 1fr 1fr; gap: 12px; } .hgrid { grid-template-columns: repeat(4, 1fr); } .hcard b { font-size: 14px; } }
 .hmatch .hvs { margin: 14px 0 0; } .hmatch .hcard img { max-height: 120px; }
+.hreset { margin-top: 16px; }
