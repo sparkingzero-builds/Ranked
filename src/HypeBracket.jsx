@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { MOMENTS, MOMENT, thumb } from './moments.js'
+import { MOMENTS, MOMENT, FRANCHISES, thumb } from './moments.js'
 import { sb, logActivity } from './cloud.js'
 
-const ROUNDS = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semi-finals', 'Final']
+// round name from how many moments are still in it
+const roundName = n => n === 2 ? 'Final' : n === 4 ? 'Semi-finals' : n === 8 ? 'Quarter-finals' : `Round of ${n}`
+const bracketSize = n => n >= 32 ? 32 : n >= 16 ? 16 : n >= 8 ? 8 : n >= 4 ? 4 : 0
+const PICKED = 'ranked.hype.franchises'
 const RUN = 'ranked.hype.run'
 const DONE = 'ranked.hype.done'
 const load = k => { try { return JSON.parse(localStorage.getItem(k)) } catch { return null } }
@@ -89,15 +92,7 @@ export default function HypeBracket({ me, friends = [] }) {
   if (played === null) return <div className="loading">Loading…</div>
   if (played) return <Results mine={played} all={all} friends={friends} me={me} onReset={reset} />
 
-  if (!run) return (
-    <div className="card pad hintro">
-      <div className="kicker">New mode</div>
-      <div className="huge sm">HYPEST MOMENT EVER</div>
-      <p>32 legendary moments, knockout bracket. Each matchup plays both clips once, then you pick the hypest. <b>You only get one run</b>: your champion is locked in for the squad to see.</p>
-      <div className="hgrid">{MOMENTS.map(m => <img key={m.id} src={thumb(m)} alt={m.title} title={m.title} loading="lazy" />)}</div>
-      <button className="pill lgo" onClick={() => { setRun({ order: shuffle(MOMENTS.map(m => m.id)), picks: [[]] }); setPhase('A') }}>Start the bracket</button>
-    </div>
-  )
+  if (!run) return <Intro onStart={ids => { setRun({ order: ids, picks: [[]] }); setPhase('A'); setStarted(false) }} />
 
   const round = run.picks.length - 1
   const entrants = round === 0 ? run.order : run.picks[round - 1]
@@ -128,8 +123,8 @@ export default function HypeBracket({ me, friends = [] }) {
   return (
     <div className="hmatch">
       <div className="row hhead">
-        <div><div className="kicker">{ROUNDS[round]}</div><div className="muted small">Match {match + 1} of {entrants.length / 2}</div></div>
-        <div className="hprog"><div style={{ width: `${(run.picks.flat().length / 31) * 100}%` }} /></div>
+        <div><div className="kicker">{roundName(entrants.length)}</div><div className="muted small">Match {match + 1} of {entrants.length / 2}</div></div>
+        <div className="hprog"><div style={{ width: `${(run.picks.flat().length / (run.order.length - 1)) * 100}%` }} /></div>
         <button className="pill ghost" onClick={reset}>↺ Restart</button>
       </div>
       {!started ? <button className="pill lgo" onClick={() => setStarted(true)}>▶ Play the clips</button>
@@ -144,6 +139,35 @@ export default function HypeBracket({ me, friends = [] }) {
           <img src={thumb(m)} alt="" /><b>{m.title}</b><span>{m.anime}</span>
         </div>)}
         <div className="bvs">VS</div>
+      </div>
+    </div>
+  )
+}
+
+// Pick which anime to include; the bracket uses a random 4/8/16/32 of those moments.
+function Intro({ onStart }) {
+  const [on, setOn] = useState(() => new Set(load(PICKED) || FRANCHISES))
+  const pool = MOMENTS.filter(m => on.has(m.f))
+  const size = bracketSize(pool.length)
+  const toggle = f => { const n = new Set(on); n.has(f) ? n.delete(f) : n.add(f); setOn(n); save(PICKED, [...n]) }
+  const all = v => { const n = new Set(v ? FRANCHISES : []); setOn(n); save(PICKED, [...n]) }
+  return (
+    <div className="card pad hintro">
+      <div className="kicker">New mode</div>
+      <div className="huge sm">HYPEST MOMENT EVER</div>
+      <p>Knockout bracket of legendary moments. Each matchup plays both clips once, then you pick the hypest. Tick the anime you've seen so there are no spoilers.</p>
+      <div className="row hpickhead"><b>Anime to include</b>
+        <span><button className="linkbtn" onClick={() => all(true)}>All</button> · <button className="linkbtn" onClick={() => all(false)}>None</button></span></div>
+      <div className="hfran">
+        {FRANCHISES.map(f => {
+          const n = MOMENTS.filter(m => m.f === f).length
+          return <label key={f} className={`hf ${on.has(f) ? 'on' : ''}`}><input type="checkbox" checked={on.has(f)} onChange={() => toggle(f)} /><span>{f}</span><small>{n}</small></label>
+        })}
+      </div>
+      <div className="hgrid">{pool.slice(0, 32).map(m => <img key={m.id} src={thumb(m)} alt={m.title} title={m.title} loading="lazy" />)}</div>
+      <div className="row hstart">
+        <span className="muted">{pool.length} moments ticked{size ? ` → ${size}-moment bracket (${size - 1} matchups)` : ' (tick at least 4 to play)'}</span>
+        <button className="pill lgo" disabled={!size} onClick={() => onStart(shuffle(pool.map(m => m.id)).slice(0, size))}>Start the bracket</button>
       </div>
     </div>
   )

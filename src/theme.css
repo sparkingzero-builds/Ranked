@@ -624,3 +624,10 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 @media (max-width: 700px) { .hvs { grid-template-columns: 1fr 1fr; gap: 12px; } .hgrid { grid-template-columns: repeat(4, 1fr); } .hcard b { font-size: 14px; } }
 .hmatch .hvs { margin: 14px 0 0; } .hmatch .hcard img { max-height: 120px; }
 .hreset { margin-top: 16px; }
+.hpickhead { margin: 10px 0 8px; } .hpickhead b { color: #fff; }
+.hfran { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.hf { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #00000040; cursor: pointer; transform: skewX(-6deg); color: #a49ccf; font-weight: 800; font-size: 13px; }
+.hf input { accent-color: var(--blue); width: 16px; height: 16px; }
+.hf span { flex: 1; } .hf small { color: #647380; }
+.hf.on { background: #ffd60a1f; color: #fff; box-shadow: inset 3px 0 var(--blue); }
+.hstart { margin-top: 10px; gap: 12px; flex-wrap: wrap; } .hstart .lgo { width: auto; padding: 12px 28px; }
