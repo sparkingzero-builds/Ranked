@@ -632,3 +632,5 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .hf.on { background: #ffd60a1f; color: #fff; box-shadow: inset 3px 0 var(--blue); }
 .hstart { margin-top: 10px; gap: 12px; flex-wrap: wrap; } .hstart .lgo { width: auto; padding: 12px 28px; }
 .hsizes button:disabled { opacity: .3; cursor: default; }
+.hexpand { position: relative; display: inline-flex; gap: 6px; align-items: center; }
+.hexopts { display: inline-flex; gap: 6px; } .hexopts .pill { font-size: 13px; padding: 6px 12px; }

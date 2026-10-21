@@ -95,21 +95,19 @@ export default function HypeBracket({ me, friends = [] }) {
 
   if (!run) return <Intro onStart={ids => { setRun({ order: ids, picks: [[]] }); setPhase('A'); setStarted(false) }} />
 
-  const round = run.picks.length - 1
+  const round = currentRound(run)
   const entrants = round === 0 ? run.order : run.picks[round - 1]
-  const match = run.picks[round].length
+  const match = (run.picks[round] || []).length
   const A = MOMENT[entrants[match * 2]], B = MOMENT[entrants[match * 2 + 1]]
 
   async function pick(winner) {
     const picks = run.picks.map(r => [...r])
-    picks[round].push(winner)
-    if (picks[round].length === entrants.length / 2) {
-      if (picks[round].length === 1) return finish(picks)
-      picks.push([])
-    }
+    ;(picks[round] ||= []).push(winner)
+    if (entrants.length === 2) return finish(picks)
     setRun({ ...run, picks }); setPhase('A')
   }
   async function finish(picks) {
+    picks = picks.filter(r => r.length)
     const champion = picks[picks.length - 1][0]
     const row = { champion, picks, order: run.order }
     if (online) {
@@ -126,6 +124,7 @@ export default function HypeBracket({ me, friends = [] }) {
       <div className="row hhead">
         <div><div className="kicker">{roundName(entrants.length)}</div><div className="muted small">Match {match + 1} of {entrants.length / 2}</div></div>
         <div className="hprog"><div style={{ width: `${(run.picks.flat().length / (run.order.length - 1)) * 100}%` }} /></div>
+        <Expand run={run} onExpand={order => { setRun({ ...run, order }); setPhase('A') }} />
         <button className="pill ghost" onClick={reset}>↺ Restart</button>
       </div>
       {!started ? <button className="pill lgo" onClick={() => setStarted(true)}>▶ Play the clips</button>
@@ -143,6 +142,36 @@ export default function HypeBracket({ me, friends = [] }) {
       </div>
     </div>
   )
+}
+
+// The round to play next: the lowest round that still has matches and whose entrants are all decided.
+// (After an expansion, earlier winners sit in later rounds while the new half catches up.)
+function currentRound(run) {
+  for (let r = 0; ; r++) {
+    const ent = r === 0 ? run.order : run.picks[r - 1] || []
+    const done = (run.picks[r] || []).length
+    if (done < ent.length / 2) return r
+    if (ent.length <= 2) return r
+  }
+}
+
+// Double the bracket (once or more) with moments that haven't been used yet, from the ticked anime.
+// New moments are added as a second half: they play their side first, then meet your existing winners.
+function Expand({ run, onExpand }) {
+  const [open, setOpen] = useState(false)
+  const picked = new Set(load(PICKED) || FRANCHISES)
+  const used = new Set(run.order)
+  const spare = shuffle(MOMENTS.filter(m => picked.has(m.f) && !used.has(m.id)).map(m => m.id))
+  const n = run.order.length
+  const options = SIZES.filter(t => t > n && t - n <= spare.length && Number.isInteger(Math.log2(t / n)))
+  if (!options.length) return null
+  return <span className="hexpand">
+    <button className="pill ghost" onClick={() => setOpen(!open)}>⤢ Expand</button>
+    {open && <span className="hexopts">{options.map(t => <button key={t} className="pill" onClick={() => {
+      if (!confirm(`Expand to ${t} moments? ${t - n} new moments join, and your picks so far are kept.`)) return
+      onExpand([...run.order, ...spare.slice(0, t - n)]); setOpen(false)
+    }}>{n} → {t}</button>)}</span>}
+  </span>
 }
 
 // Pick which anime to include; the bracket uses a random 4/8/16/32 of those moments.
