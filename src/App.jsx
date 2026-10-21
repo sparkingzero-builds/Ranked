@@ -5,6 +5,7 @@ import Stats from './Stats.jsx'
 import Market from './Market.jsx'
 import Detail from './Detail.jsx'
 import HypeBracket from './HypeBracket.jsx'
+import Fantasy from './Fantasy.jsx'
 import { EpisodeModal } from './Episodes.jsx'
 import Season, { currentSeason } from './Season.jsx'
 import CharRank from './CharRank.jsx'
@@ -181,7 +182,7 @@ function Main({ me, setMe }) {
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
         <div className="links">
-          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['mates', 'Mates'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
+          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['league', 'League'], ['mates', 'Mates'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
             <button key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)}>{l}</button>)}
         </div>
         <UserBox user={user} onChange={changeAnilist} />
@@ -200,6 +201,7 @@ function Main({ me, setMe }) {
           {page === 'stats' && <Stats {...ctx} />}
           {page === 'market' && <Market me={me} friends={friends} />}
           {page === 'season' && <Season {...ctx} />}
+          {page === 'league' && <Fantasy me={me} friends={friends} openProfile={openProfile} />}
           {page === 'squad' && <Squad me={me} friends={friends} openProfile={openProfile} />}
           {page === 'profile' && profileId && <Profile key={profileId} id={profileId} me={me} myList={list} friends={friends} openAnime={openAnime}
             onProfileSaved={p => { setMe(p); setFriends(fs => fs.map(x => x.id === p.id ? p : x)) }} />}
