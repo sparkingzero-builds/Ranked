@@ -190,6 +190,7 @@ function Main({ me, setMe }) {
         <Bell me={me} />
         {me && <div className="mebox" title="Your profile" onClick={() => openProfile(me.id)}><b>{me.username}</b><span>{synced ? 'synced' : 'syncing…'}</span></div>}
       </nav>
+      <MobileNav page={page} setPage={setPage} />
       <main className="wrap">
         {err && <div className="card error">{err.startsWith('AniList is busy') ? err : `Couldn't load your AniList: ${err}`}</div>}
         {loading && !list.length ? <div className="loading">Loading your AniList…</div> : <>
@@ -707,4 +708,24 @@ function AniListLink() {
         <button onClick={() => { disconnectAniList(); setOn(false) }}>Disconnect</button></div>
     : <div className="allink">List changes only save in Ranked right now.
         <button className="pill" onClick={connectAniList}>🔗 Connect AniList</button></div>
+}
+
+// phone layout: bottom tab bar with the 4 main pages + a More sheet for the rest
+const MOBILE_TABS = [['home', '🏠', 'Home'], ['list', '📺', 'List'], ['league', '🏆', 'League'], ['squad', '💬', 'Squad']]
+const MOBILE_MORE = [['browse', '🔍', 'Browse'], ['rank', '🥇', 'Rankings'], ['h2h', '🔥', 'Head-to-Head'], ['season', '📅', 'Season'], ['stats', '📊', 'Stats'], ['market', '📈', 'Market']]
+function MobileNav({ page, setPage }) {
+  const [more, setMore] = useState(false)
+  const go = k => { setPage(k); setMore(false); window.scrollTo(0, 0) }
+  const inMore = MOBILE_MORE.some(([k]) => k === page)
+  return <>
+    {more && <div className="mmore-bg" onClick={() => setMore(false)}>
+      <div className="mmore" onClick={e => e.stopPropagation()}>
+        {MOBILE_MORE.map(([k, i, l]) => <button key={k} className={page === k ? 'on' : ''} onClick={() => go(k)}><span>{i}</span>{l}</button>)}
+      </div>
+    </div>}
+    <nav className="mtabs">
+      {MOBILE_TABS.map(([k, i, l]) => <button key={k} className={page === k ? 'on' : ''} onClick={() => go(k)}><span>{i}</span>{l}</button>)}
+      <button className={inMore || more ? 'on' : ''} onClick={() => setMore(m => !m)}><span>☰</span>More</button>
+    </nav>
+  </>
 }
