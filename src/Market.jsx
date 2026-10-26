@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { openChar } from './CharProfile.jsx'
 import { sb, fetchAll } from './cloud.js'
 import { coins, pct, change24, powerGap, SOURCES, START_CASH, TICK_MS } from './market.js'
 
@@ -524,7 +525,7 @@ const StockRow = memo(function StockRow({ c, selected, pts, onPick }) {
   const ch = change24(c), gap = powerGap(c)
   return (
     <div className={`srow ${selected ? 'sel' : ''}`} onClick={() => onPick(c.id)}>
-      <img src={c.image} alt="" loading="lazy" decoding="async" />
+      <img src={c.image} alt="" loading="lazy" decoding="async" title="Open profile" onClick={e => { e.stopPropagation(); openChar(c.id) }} />
       <div className="sname"><b>{c.name}<Badges c={c} /></b><span className="tick">{c.sym}</span></div>
       <Spark pts={pts} up={ch >= 0} />
       <div className="sprice"><b>{coins(c.price)}</b><span className={ch >= 0 ? 'up' : 'down'}>{pct(ch)}</span></div>

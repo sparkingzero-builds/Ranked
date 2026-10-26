@@ -762,3 +762,42 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
   .row.head > .row.gap { flex-wrap: wrap; gap: 6px; }
   .row.head > .row.gap .pill { font-size: 12px; padding: 6px 10px; }
 }
+
+/* ===== Captain ===== */
+.fcapbar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 10px 16px; margin-bottom: 12px; background: linear-gradient(90deg, #3a2a00, #1a1240); border-left: 4px solid var(--blue); }
+.fcapbar b { font-family: var(--display); font-weight: 400; text-transform: uppercase; letter-spacing: 1px; color: var(--blue); }
+.fcapbar span { color: #fff; } .fcapbar span b { font-family: inherit; text-transform: none; letter-spacing: 0; }
+.fcapbar em { margin-left: auto; color: #a49ccf; font-size: 12px; font-style: normal; }
+.fcapt { position: absolute; top: 8px; right: 8px; z-index: 2; font-style: normal; font-family: var(--display); font-size: 13px; letter-spacing: 1px; background: var(--blue); color: #120c2c; padding: 3px 8px; transform: skewX(-10deg); box-shadow: 3px 3px 0 #ff2e88; }
+.ftilebtns { position: absolute; left: 6px; right: 6px; bottom: 52px; z-index: 3; display: flex; gap: 4px; flex-wrap: wrap; }
+.ftilebtns .btn { position: static; }
+.fchar .btn { position: static; }
+.fcard { cursor: pointer; } .fcard.cap { border-color: var(--blue); box-shadow: 0 0 0 2px var(--blue); }
+.fcap-badge { position: absolute; top: 0; right: 0; font-style: normal; font-family: var(--display); font-size: 12px; background: var(--blue); color: #120c2c; padding: 0 5px; }
+.clickable { cursor: pointer; } .srow img { cursor: zoom-in; } .fmoment img { cursor: pointer; }
+
+/* ===== Character profile ===== */
+.cpbg { position: fixed; inset: 0; z-index: 100; background: #05031099; backdrop-filter: blur(4px); display: grid; place-items: center; padding: 16px; animation: cpfade .15s; }
+.cp { position: relative; width: min(560px, 100%); max-height: 88vh; overflow-y: auto; padding: 22px; background: linear-gradient(160deg, color-mix(in srgb, var(--c) 28%, #1a1245), #110b2e 60%);
+  border-top: 4px solid var(--blue); box-shadow: 0 20px 60px #000c; clip-path: polygon(0 0, 100% 0, 100% 97%, 96% 100%, 0 100%); animation: cpup .2s ease-out; }
+@keyframes cpfade { from { opacity: 0; } } @keyframes cpup { from { transform: translateY(24px); opacity: 0; } }
+.cpx { position: absolute; top: 10px; right: 10px; z-index: 3; width: 34px; height: 34px; border: 0; background: #0006; color: #fff; font-size: 16px; cursor: pointer; }
+.cphead { display: flex; gap: 18px; align-items: flex-end; }
+.cpimg { position: relative; flex: none; width: 130px; aspect-ratio: 3/4; overflow: hidden; clip-path: polygon(0 0, 100% 0, 100% 92%, 86% 100%, 0 100%); box-shadow: 0 0 0 3px #ffffff22; }
+.cpimg img { width: 100%; height: 100%; object-fit: cover; object-position: center 20%; }
+.cpwho { min-width: 0; } .cpwho h2 { margin: 2px 0; font-size: 30px; line-height: 1; }
+.cpstats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
+.cpstats div { display: flex; flex-direction: column; } .cpstats b { font-family: var(--display); font-weight: 400; font-size: 22px; color: #fff; line-height: 1; }
+.cpstats span { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #a49ccf; }
+.cpspark { width: 100%; height: 70px; margin: 16px 0 6px; background: #0003; }
+.cpevent { background: #ff2e8833; border-left: 3px solid #ff2e88; padding: 6px 10px; margin: 8px 0; color: #fff; font-size: 14px; }
+.cp h3 { margin: 18px 0 8px; }
+.cpleague { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: #0004; }
+.cpleague b.up, .cpleague b.down { font-family: var(--display); font-weight: 400; font-size: 22px; }
+.cp .up { color: #3ddc97; } .cp .down { color: #ff4d6d; }
+.cpmoments { background: #0003; margin-top: 6px; max-height: 220px; overflow-y: auto; }
+.cpparts { display: grid; gap: 8px; } .cpparts > div { display: grid; grid-template-columns: 70px 1fr; gap: 2px 10px; align-items: center; }
+.cpparts span { text-transform: uppercase; font-size: 11px; letter-spacing: 1px; color: #a49ccf; }
+.cpbar { height: 8px; background: #ffffff14; transform: skewX(-20deg); } .cpbar div { height: 100%; background: var(--blue); }
+.cpparts em { grid-column: 2; font-style: normal; font-size: 12px; color: #d9d4ff; }
+@media (max-width: 760px) { .cpbg { place-items: end center; padding: 0; } .cp { max-height: 85vh; width: 100%; padding-bottom: calc(22px + env(safe-area-inset-bottom)); } .cpimg { width: 104px; } .cpwho h2 { font-size: 24px; } }

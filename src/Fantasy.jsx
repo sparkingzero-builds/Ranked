@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { sb, fetchAll, logActivity } from './cloud.js'
+import { openChar } from './CharProfile.jsx'
 
 // Fantasy League: pick 5 characters per anime season, score points from real-world hype + squad-logged moments.
 const SEASONS = ['WINTER', 'SPRING', 'SUMMER', 'FALL']
@@ -37,6 +38,7 @@ export default function Fantasy({ me, friends, openProfile }) {
   const [events, setEvents] = useState([])
   const [votes, setVotes] = useState([])
   const [swaps, setSwaps] = useState([])
+  const [caps, setCaps] = useState([])
   const [tab, setTab] = useState('table')
   const [err, setErr] = useState('')
   const [tick, setTick] = useState(0)
@@ -52,6 +54,7 @@ export default function Fantasy({ me, friends, openProfile }) {
     fetchAll(() => sb.from('fantasy_events').select('*').order('created_at', { ascending: false })).then(setEvents).catch(() => {})
     sb.from('fantasy_votes').select('*').eq('season', S.key).eq('week', S.week).then(({ data }) => setVotes(data || []))
     sb.from('fantasy_swaps').select('*').eq('season', S.key).then(({ data }) => setSwaps(data || []))
+    sb.from('fantasy_captains').select('*').eq('season', S.key).then(({ data }) => setCaps(data || []))
   }, [tick])
   useEffect(() => {
     if (!sb) return
@@ -84,6 +87,9 @@ export default function Fantasy({ me, friends, openProfile }) {
     return m
   }, [events])
   const mine = teams.find(t => t.user === me?.id)
+  // captain = latest pick at or before this week (carries over if you don't pick)
+  const capOf = u => caps.filter(c => c.user_id === u && c.week <= S.week).sort((a, b) => b.week - a.week)[0]?.char_id
+  const capLocked = caps.some(c => c.user_id === me?.id && c.week === S.week)
   const takenBy = Object.fromEntries(picks.map(p => [p.char_id, p.user_id]))
 
   if (!sb || !me) return <div className="card pad muted">Sign in to play the Fantasy League.</div>
@@ -114,9 +120,10 @@ export default function Fantasy({ me, friends, openProfile }) {
           {[['table', 'Standings'], ['team', 'My team'], ['moments', 'Moments'], ['vote', "Who's hyper?"], ['rules', 'Scoring']].map(([k, l]) =>
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>{l}</button>)}
         </div>
-        {tab === 'table' && <Standings teams={teams} byId={byId} who={who} me={me} charPts={charPts} dead={dead} openProfile={openProfile} events={live} S={S} />}
+        {tab === 'table' && <Standings capOf={capOf} teams={teams} byId={byId} who={who} me={me} charPts={charPts} dead={dead} openProfile={openProfile} events={live} S={S} />}
         {tab === 'team' && <MyTeam team={mine} byId={byId} chars={chars} takenBy={takenBy} name={name} charPts={charPts} dead={dead}
           events={cur.filter(e => e.team_user === me.id)} swapped={swaps.some(s => s.user_id === me.id && s.week === S.week)}
+          captain={capOf(me.id)} capLocked={capLocked} onCaptain={id => run('fantasy_set_captain', { p_char: id })}
           onSwap={(o, i) => run('fantasy_swap', { p_out: o, p_in: i })} />}
         {tab === 'moments' && <Moments events={cur.filter(e => e.source === 'bot')} byId={byId} name={name} />}
         {tab === 'vote' && <Vote S={S} teams={teams} byId={byId} name={name} me={me} votes={votes} reload={reload} setErr={setErr} />}
@@ -126,12 +133,13 @@ export default function Fantasy({ me, friends, openProfile }) {
   )
 }
 
-function CharTile({ c, sub, on, off, onClick, children, big }) {
+function CharTile({ c, sub, on, off, onClick, children, big, capt }) {
   if (!c) return null
   return <div className={`fchar ${on ? 'on' : ''} ${off ? 'off' : ''} ${big ? 'big' : ''}`} onClick={off ? undefined : onClick} style={{ '--c': c.color || '#7b5cff' }}>
     <img src={c.image} alt="" loading="lazy" referrerPolicy="origin" />
     {c.form && <i className="fform">{c.form}</i>}
     {on && <i className="fcheck">✓</i>}
+    {capt && <i className="fcapt">👑 ×2</i>}
     <div className="fcap"><b>{c.name}</b><span>{sub ?? c.media_title}</span></div>
     {children}
   </div>
@@ -167,7 +175,7 @@ function Picker({ chars, takenBy, name, onLock }) {
   </div>
 }
 
-function Standings({ teams, byId, who, me, charPts, dead, openProfile, events, S }) {
+function Standings({ capOf, teams, byId, who, me, charPts, dead, openProfile, events, S }) {
   // hall of fame: winner of each finished season
   const past = {}
   for (const e of events) if (e.season !== S.key) ((past[e.season] ||= {})[e.team_user] = (past[e.season][e.team_user] || 0) + e.points)
@@ -181,8 +189,8 @@ function Standings({ teams, byId, who, me, charPts, dead, openProfile, events, S
           {p?.avatar ? <img src={p.avatar} alt="" /> : <div className="blank">{(p?.username || '?')[0]}</div>}
           <div><b>{p?.username || '?'}</b><span className={t.week < 0 ? 'down' : 'up'}>{pts(t.week)} this week</span></div>
         </div>
-        <div className="fline">{t.chars.map(id => { const c = byId[id]; return c && <div key={id} className={`fcard ${dead[id] ? 'dead' : ''}`} title={`${c.name}${c.form ? ` (${c.form})` : ''}`}>
-          <img src={c.image} alt="" loading="lazy" referrerPolicy="origin" /><em>{charPts[id] || 0}</em></div> })}</div>
+        <div className="fline">{t.chars.map(id => { const c = byId[id]; return c && <div key={id} className={`fcard ${dead[id] ? 'dead' : ''} ${capOf(t.user) === id ? 'cap' : ''}`} title={`${c.name}${c.form ? ` (${c.form})` : ''}`} onClick={() => openChar(id)}>
+          <img src={c.image} alt="" loading="lazy" referrerPolicy="origin" /><em>{charPts[id] || 0}</em>{capOf(t.user) === id && <i className="fcap-badge">C</i>}</div> })}</div>
         <div className="ftotal">{t.total}<small>pts</small></div>
       </div> })}
       {!teams.length && <div className="card pad muted">No teams yet.</div>}
@@ -201,14 +209,23 @@ function Standings({ teams, byId, who, me, charPts, dead, openProfile, events, S
   </div>
 }
 
-function MyTeam({ team, byId, chars, takenBy, name, charPts, dead, events, swapped, onSwap }) {
+function MyTeam({ team, byId, chars, takenBy, name, charPts, dead, events, swapped, onSwap, captain, capLocked, onCaptain }) {
   const [out, setOut] = useState(null)
   const [q, setQ] = useState('')
   return <div className="rank">
     <section>
+      <div className="fcapbar">
+        <b>👑 Captain</b>
+        <span>{captain ? <>{byId[captain]?.name} scores <b>double</b> this week</> : 'Pick a captain: their points count double'}</span>
+        <em>{capLocked ? 'Locked for this week' : 'One pick per week, then it locks'}</em>
+      </div>
       <div className="fgrid five">
-        {team.chars.map(id => <CharTile key={id} big c={byId[id]} on={out === id} sub={dead[id] ? '💀 dead: scores 0 until they return' : `${charPts[id] || 0} pts`}>
-          {!swapped && <button className="btn sm" onClick={() => setOut(out === id ? null : id)}>{out === id ? 'Cancel' : 'Swap'}</button>}
+        {team.chars.map(id => <CharTile key={id} big c={byId[id]} on={out === id} capt={captain === id} onClick={() => openChar(id)}
+          sub={dead[id] ? '💀 dead: scores 0 until they return' : `${charPts[id] || 0} pts`}>
+          <div className="ftilebtns" onClick={e => e.stopPropagation()}>
+            {!capLocked && captain !== id && <button className="btn sm" onClick={() => onCaptain(id)}>👑 Captain</button>}
+            {!swapped && <button className="btn sm" onClick={() => setOut(out === id ? null : id)}>{out === id ? 'Cancel' : 'Swap'}</button>}
+          </div>
         </CharTile>)}
       </div>
       {swapped && <p className="muted small">You've used this week's swap.</p>}
@@ -235,7 +252,7 @@ function Moments({ events, byId, name }) {
     <p className="muted">Fights, power-ups, deaths and appearances are picked up automatically every day from episode and chapter recaps. Nothing to log.</p>
     <div className="fmoments">
       {events.map(e => { const c = byId[e.char_id]; return <div key={e.id} className={`fmoment ${e.points < 0 ? 'neg' : ''}`}>
-        {c && <img src={c.image} alt="" referrerPolicy="origin" />}
+        {c && <img src={c.image} alt="" referrerPolicy="origin" onClick={() => openChar(c.id)} />}
         <div className="grow">
           <div className="fmk">{KINDS[e.kind]?.[0]} {KINDS[e.kind]?.[1]} <b className={e.points < 0 ? 'down' : 'up'}>{pts(e.points)}</b></div>
           <b className="fmn">{c?.name}</b> <span className="muted small">· {name(e.team_user)}'s team · wk {e.week}</span>
@@ -280,6 +297,7 @@ function Rules() {
     {T('Automatic', auto)}
     {T('Big moments (found automatically from recaps)', squad)}
     {T('Squad vote', [['🗳️', "Win your weekly \"who's hyper?\" matchup", '+5']])}
+    {T('Captain', [['👑', 'Your captain scores double all week (pick once a week, carries over)', '×2']])}
     <p className="muted small">Seasons follow the anime seasons. Teams lock for the season with one swap a week. Most points when the season ends takes the crown and a spot in the hall of fame.</p>
   </div>
 }

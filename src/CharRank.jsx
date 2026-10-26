@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { sb, logActivity } from './cloud.js'
+import { openChar } from './CharProfile.jsx'
 import { coins } from './market.js'
 
 async function searchChars(q) {
@@ -46,7 +47,7 @@ export default function CharRank({ extra, setExtra }) {
         <div className="card">
           {chars.map((c, i) => (
             <div key={c.id} className="slot">
-              <b className="num">#{i + 1}</b><img src={c.image} alt="" />
+              <b className="num">#{i + 1}</b><img src={c.image} alt="" className="clickable" title="Open profile" onClick={() => openChar(c.id)} />
               <div className="grow">{c.name}<div className="muted small">{c.show}</div></div>
               {prices[c.id] && <span className="cprice" title="On the market">${prices[c.id].sym} {coins(prices[c.id].price)}</span>}
               <button className="x" onClick={() => move(i, -1)}>↑</button><button className="x" onClick={() => move(i, 1)}>↓</button>

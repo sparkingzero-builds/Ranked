@@ -6,6 +6,7 @@ import Market from './Market.jsx'
 import Detail from './Detail.jsx'
 import HypeBracket from './HypeBracket.jsx'
 import Fantasy from './Fantasy.jsx'
+import CharProfile from './CharProfile.jsx'
 import { EpisodeModal } from './Episodes.jsx'
 import Season, { currentSeason } from './Season.jsx'
 import CharRank from './CharRank.jsx'
@@ -191,6 +192,7 @@ function Main({ me, setMe }) {
         {me && <div className="mebox" title="Your profile" onClick={() => openProfile(me.id)}><b>{me.username}</b><span>{synced ? 'synced' : 'syncing…'}</span></div>}
       </nav>
       <MobileNav page={page} setPage={setPage} />
+      <CharProfile friends={friends} />
       <main className="wrap">
         {err && <div className="card error">{err.startsWith('AniList is busy') ? err : `Couldn't load your AniList: ${err}`}</div>}
         {loading && !list.length ? <div className="loading">Loading your AniList…</div> : <>
