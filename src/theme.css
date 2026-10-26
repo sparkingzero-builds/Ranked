@@ -811,3 +811,6 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .cp::-webkit-scrollbar { width: 6px; } .cp::-webkit-scrollbar-thumb { background: #ffffff30; }
 .cpmoments { scrollbar-width: thin; scrollbar-color: #ffffff30 transparent; }
 .cpwho h2 { color: #fff; }
+
+.psell { display: flex; gap: 6px; flex: none; } .psell .pill { font-size: 12px; padding: 6px 10px; }
+@media (max-width: 760px) { .stocks .srow { flex-wrap: wrap; } .psell { width: 100%; justify-content: flex-end; } }

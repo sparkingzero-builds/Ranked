@@ -134,7 +134,7 @@ function MarketLive({ me, friends }) {
       </div>}
 
       {view === 'portfolio' && <OpenOrders byId={byId} />}
-      {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} />}
+      {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} trade={trade} />}
       {view === 'board' && <Leaderboard byId={byId} friends={friends} me={me} />}
       {view === 'bets' && <Bets chars={chars} byId={byId} friends={friends} me={me} wallet={wallet} refresh={async () => {
         const { data } = await sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(); if (data) setWallet(data)
@@ -257,15 +257,19 @@ function StockPanel({ c, wallet, trade }) {
         <div className="muted small">Total: {coins(c.price * qty)} coins · price locks when the trade hits the server</div>
         <div className="row gap">
           <button className="pill buy" disabled={busy || qty > maxBuy} onClick={() => go(qty)}>Buy</button>
-          <button className="pill sell" disabled={busy || !h || qty > h.qty} onClick={() => go(-qty)}>Sell</button>
+          <button className="pill sell" disabled={busy || !h} onClick={() => go(-Math.min(qty, h.qty))}>Sell{h && qty > h.qty ? ` ${h.qty}` : ''}</button>
+          {h && <button className="pill sell" disabled={busy} onClick={() => go(-h.qty)}>Sell all</button>}
         </div>
+        {!h && <div className="muted small">You don't own any {c.sym} yet, so there's nothing to sell.</div>}
         {h && <div className="hold">You own <b>{h.qty}</b> @ {coins(h.avg)} · P/L <b className={c.price >= h.avg ? 'up' : 'down'}>{coins((c.price - h.avg) * h.qty)}</b></div>}
       </div>
     </div>
   )
 }
 
-function Portfolio({ wallet, byId, onPick, reset }) {
+function Portfolio({ wallet, byId, onPick, reset, trade }) {
+  const [busy, setBusy] = useState(null)
+  const sell = async (e, c, n) => { e.stopPropagation(); setBusy(c.id); await trade(c, -n); setBusy(null) }
   const rows = Object.entries(wallet.holdings || {}).map(([id, h]) => ({ c: byId[id], ...h })).filter(r => r.c)
   return (
     <div className="mgrid">
@@ -278,6 +282,10 @@ function Portfolio({ wallet, byId, onPick, reset }) {
               <img src={c.image} alt="" />
               <div className="sname"><b>{c.name}</b><span>{c.sym} · {qty} shares @ {coins(avg)}</span></div>
               <div className="sprice"><b>{coins(c.price * qty)}</b><span className={pl >= 0 ? 'up' : 'down'}>{pl >= 0 ? '+' : ''}{coins(pl)} ({pct(c.price / avg - 1)})</span></div>
+              <div className="psell">
+                <button className="pill sell" disabled={busy === c.id} onClick={e => sell(e, c, 1)}>Sell 1</button>
+                <button className="pill sell" disabled={busy === c.id} onClick={e => sell(e, c, qty)}>Sell all</button>
+              </div>
             </div>
           })}
           {!rows.length && <div className="card pad muted">No positions yet. Look for high hype and a big power gap on the Market tab.</div>}
