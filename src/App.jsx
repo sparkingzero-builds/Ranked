@@ -182,7 +182,7 @@ function Main({ me, setMe }) {
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
         <div className="links">
-          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['league', 'League'], ['mates', 'Mates'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
+          {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['league', 'League'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
             <button key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)}>{l}</button>)}
         </div>
         <UserBox user={user} onChange={changeAnilist} />
