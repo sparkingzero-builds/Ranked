@@ -754,3 +754,11 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
   @keyframes mup { from { transform: translateY(20px); opacity: 0; } }
   .fdraft { bottom: calc(82px + env(safe-area-inset-bottom)); }
 }
+.lobbybox { box-sizing: border-box; }
+@media (max-width: 760px) { .lobbybox { padding: 30px 18px; } }
+@media (max-width: 760px) {
+  .row.head { flex-wrap: wrap; gap: 10px; }
+  .row.head > .tabs { display: flex; flex-wrap: nowrap; }
+  .row.head > .row.gap { flex-wrap: wrap; gap: 6px; }
+  .row.head > .row.gap .pill { font-size: 12px; padding: 6px 10px; }
+}
