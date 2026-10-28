@@ -28,6 +28,7 @@ export const SONGS = [
   { id: "oddfuture", f: "My Hero Academia", title: "Odd Future", anime: "My Hero Academia Season 3", kind: 'OP', clips: ["iBRH9Po3gw8", "v1YojYU5nPQ", "FNgZ72EV9ls"] },
   { id: "departure", f: "Hunter x Hunter", title: "Departure!", anime: "Hunter x Hunter", kind: 'OP', clips: ["LXu9u3kH6Ro", "CGXZmNECNco", "faqmNf_fZlE"] },
   { id: "blackcatcher", f: "Black Clover", title: "Black Catcher", anime: "Black Clover", kind: 'OP', clips: ["XMeQeIG_rQg", "lc4_QdQteBo", "65_exPZjAKg"] },
+  { id: "blackrover", f: "Black Clover", title: "Black Rover", anime: "Black Clover", kind: 'OP', clips: ["dUiDZJMPh-s", "vsmNw9MioMQ", "aFQtJBSc_Ho"] },
   { id: "haruka", f: "Black Clover", title: "Haruka Mirai", anime: "Black Clover", kind: 'OP', clips: ["_6KZI74zKfE", "zW1v0QBqTOs", "tf61cA6a-N0"] },
   { id: "unravel", f: "Tokyo Ghoul", title: "Unravel", anime: "Tokyo Ghoul", kind: 'OP', clips: ["7aMOurgDB-o", "Py24xhrpeNs", "Epr-4IpcHCY"] },
   { id: "kickback", f: "Chainsaw Man", title: "Kick Back", anime: "Chainsaw Man", kind: 'OP', clips: ["dFlDRhvM4L0", "A1BDQeRZv3Q", "M2cckDmNLMI"] },
