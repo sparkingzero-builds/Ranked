@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { useState } from 'react'
 import { title } from './api.js'
 import YearWrapped from './YearWrapped.jsx'
+import Passport from './Passport.jsx'
 
 const CLASSES = {
   Action: ['Brawler', 'You live for the fight scenes.'],
@@ -25,8 +26,9 @@ export default function Stats(props) {
     <div className="tabs kindtabs">
       <button className={mode === 'year' ? 'on' : ''} onClick={() => setMode('year')}>Year in anime</button>
       <button className={mode === 'all' ? 'on' : ''} onClick={() => setMode('all')}>All time</button>
+      <button className={mode === 'passport' ? 'on' : ''} onClick={() => setMode('passport')}>🛂 Passport</button>
     </div>
-    {mode === 'year' ? <YearWrapped {...props} /> : <AllTime {...props} />}
+    {mode === 'year' ? <YearWrapped {...props} /> : mode === 'passport' ? <Passport {...props} /> : <AllTime {...props} />}
   </>
 }
 

@@ -81,3 +81,29 @@ export async function fetchMediaDetail(id) {
     recommendations(perPage:8, sort:RATING_DESC){ nodes { mediaRecommendation { id title { romaji english } coverImage { large } averageScore } } } } }`, { id })
   return d.Media
 }
+
+// Passport: extra details for finished shows (studio, season, source, popularity), 50 per request
+export async function fetchPassportMedia(ids) {
+  const out = {}
+  for (let k = 0; k < ids.length; k += 50) {
+    const d = await gql(`query($ids:[Int]){ Page(perPage:50){ media(id_in:$ids){ id season seasonYear format source popularity countryOfOrigin episodes
+      startDate { year } studios(isMain:true){ nodes { name } } } } }`, { ids: ids.slice(k, k + 50) })
+    for (const m of d.Page.media) out[m.id] = m
+  }
+  return out
+}
+
+// Watch streaks: days you logged an episode or finished a show on AniList (newest 1,000 list activities)
+export async function fetchWatchDays(userId) {
+  const days = new Set()
+  for (let page = 1; page <= 20; page++) {
+    const d = await gql(`query($id:Int,$p:Int){ Page(page:$p, perPage:50){ pageInfo { hasNextPage }
+      activities(userId:$id, type:ANIME_LIST, sort:ID_DESC){ ... on ListActivity { status createdAt } } } }`, { id: userId, p: page })
+    for (const a of d.Page.activities) if (/watched|completed|rewatched/.test(a.status || '')) {
+      const t = new Date(a.createdAt * 1000)
+      days.add(`${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`)
+    }
+    if (!d.Page.pageInfo.hasNextPage) break
+  }
+  return days
+}
