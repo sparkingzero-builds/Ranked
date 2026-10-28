@@ -110,32 +110,32 @@ function collections(done, extra, st) {
   const C = []
   const add = (id, icon, name, n, steps, how) => { const lvl = level(n, steps); C.push({ id, icon, name, n, lvl, next: steps[lvl] || null, how }) }
 
-  add('done', '📘', 'World Traveller', done.length, [1, 25, 100, 250], 'Shows finished')
-  add('eps', '📺', 'Episode Grinder', eps, [100, 1000, 3000, 7500], 'Total episodes in finished shows')
-  add('long', '🏔️', 'Long Runner', done.filter(e => (e.media.episodes || e.progress) >= 100).length, [1, 3, 6, 10], 'Finished a 100+ episode show')
-  add('movie', '🎬', 'Cinephile', done.filter(e => e.media.format === 'MOVIE').length, [1, 5, 15, 30], 'Anime films finished')
+  add('done', '📘', 'World Traveller', done.length, [1, 50, 200, 400], 'Shows finished')
+  add('eps', '📺', 'Episode Grinder', eps, [500, 2500, 7500, 15000], 'Total episodes in finished shows')
+  add('long', '🏔️', 'Long Runner', done.filter(e => (e.media.episodes || e.progress) >= 100).length, [1, 5, 12, 25], 'Finished a 100+ episode show')
+  add('movie', '🎬', 'Cinephile', done.filter(e => e.media.format === 'MOVIE').length, [1, 10, 25, 50], 'Anime films finished')
   add('short', '⚡', 'Bite Size', done.filter(e => ['ONA', 'TV_SHORT', 'OVA', 'SPECIAL'].includes(e.media.format)).length, [1, 5, 15, 30], 'OVAs, ONAs, specials and shorts')
-  add('perfect', '💯', 'Perfect 10', done.filter(e => e.score >= 10).length, [1, 5, 15, 30], 'Shows you rated 10')
+  add('perfect', '💯', 'Perfect 10', done.filter(e => e.score >= 10).length, [1, 10, 25, 50], 'Shows you rated 10')
   add('critic', '🧐', 'Harsh Critic', done.filter(e => e.score && e.score <= 4).length, [1, 3, 8, 15], 'Shows you rated 4 or lower')
-  add('gem', '💎', 'Hidden Gem Hunter', done.filter(e => (X(e).popularity || 1e9) < 15000).length, [1, 3, 8, 15], 'Finished a show fewer than 15k people have seen')
-  add('classic', '📼', 'Retro Collector', done.filter(e => year(e) && year(e) < 2000).length, [1, 3, 8, 15], 'Shows from before 2000')
-  add('decades', '🕰️', 'Time Traveller', new Set(done.map(e => year(e) && Math.floor(year(e) / 10) * 10).filter(Boolean)).size, [2, 3, 4, 5], 'Different decades covered')
+  add('gem', '💎', 'Hidden Gem Hunter', done.filter(e => (X(e).popularity || 1e9) < 15000).length, [1, 5, 15, 30], 'Finished a show fewer than 15k people have seen')
+  add('classic', '📼', 'Retro Collector', done.filter(e => year(e) && year(e) < 2000).length, [1, 5, 15, 30], 'Shows from before 2000')
+  add('decades', '🕰️', 'Time Traveller', new Set(done.map(e => year(e) && Math.floor(year(e) / 10) * 10).filter(Boolean)).size, [2, 3, 5, 6], 'Different decades covered')
   add('seasons', '🍂', 'Four Seasons', new Set(done.map(e => X(e).season).filter(Boolean)).size, [1, 2, 3, 4], 'Shows from Winter, Spring, Summer and Fall')
-  add('simulcast', '📡', 'Simulcast Warrior', done.filter(e => { const c = ymd(e.completedAt); return c && year(e) === c.getFullYear() }).length, [1, 5, 15, 30], 'Finished a show the same year it aired')
+  add('simulcast', '📡', 'Simulcast Warrior', done.filter(e => { const c = ymd(e.completedAt); return c && year(e) === c.getFullYear() }).length, [1, 15, 40, 80], 'Finished a show the same year it aired')
   add('speed', '🏃', 'Speedrunner', done.filter(e => { const s = ymd(e.startedAt), c = ymd(e.completedAt); return s && c && (e.media.episodes || 0) >= 12 && c - s <= 3 * 86400000 }).length, [1, 3, 8, 15], 'Finished a 12+ episode show within 3 days of starting')
-  add('manga', '📚', 'Page to Screen', done.filter(e => X(e).source === 'MANGA').length, [1, 10, 30, 60], 'Manga adaptations')
-  add('ln', '📖', 'Light Novel Reader', done.filter(e => ['LIGHT_NOVEL', 'NOVEL', 'WEB_NOVEL'].includes(X(e).source)).length, [1, 5, 15, 30], 'Novel adaptations')
-  add('original', '✨', 'Original Story', done.filter(e => X(e).source === 'ORIGINAL').length, [1, 5, 15, 30], 'Anime-original stories')
+  add('manga', '📚', 'Page to Screen', done.filter(e => X(e).source === 'MANGA').length, [1, 30, 90, 180], 'Manga adaptations')
+  add('ln', '📖', 'Light Novel Reader', done.filter(e => ['LIGHT_NOVEL', 'NOVEL', 'WEB_NOVEL'].includes(X(e).source)).length, [1, 10, 30, 60], 'Novel adaptations')
+  add('original', '✨', 'Original Story', done.filter(e => X(e).source === 'ORIGINAL').length, [1, 10, 25, 50], 'Anime-original stories')
   add('game', '🎮', 'Player Two', done.filter(e => X(e).source === 'VIDEO_GAME').length, [1, 3, 8, 15], 'Video game adaptations')
   add('abroad', '🌏', 'Overseas', done.filter(e => X(e).countryOfOrigin && X(e).countryOfOrigin !== 'JP').length, [1, 3, 8, 15], 'Donghua, manhwa and other non-Japanese shows')
   add('streak', '🔥', 'Streak Keeper', st?.best || 0, [7, 30, 100, 365], 'Best daily watch streak')
-  add('studiohop', '🏢', 'Studio Hopper', new Set(done.flatMap(e => (X(e).studios?.nodes || []).map(s => s.name))).size, [5, 15, 30, 60], 'Different studios watched')
+  add('studiohop', '🏢', 'Studio Hopper', new Set(done.flatMap(e => (X(e).studios?.nodes || []).map(s => s.name))).size, [5, 20, 40, 80], 'Different studios watched')
   for (const s of STUDIOS) {
     const n = done.filter(e => (X(e).studios?.nodes || []).some(x => x.name === s)).length
-    if (n) add('st-' + s, '🎞️', s, n, [1, 3, 6, 10], `Shows by ${s}`)
+    if (n) add('st-' + s, '🎞️', s, n, [1, 5, 15, 30], `Shows by ${s}`)
   }
   const genres = {}
   for (const e of done) for (const g of e.media.genres || []) genres[g] = (genres[g] || 0) + 1
-  for (const [g, icon] of Object.entries(GENRE_ICON)) add('g-' + g, icon, g, genres[g] || 0, [1, 5, 15, 40], `${g} shows finished`)
+  for (const [g, icon] of Object.entries(GENRE_ICON)) add('g-' + g, icon, g, genres[g] || 0, [1, 15, 60, 150], `${g} shows finished`)
   return C.sort((a, b) => b.lvl - a.lvl || (b.n / (b.next || 1)) - (a.n / (a.next || 1)))
 }
