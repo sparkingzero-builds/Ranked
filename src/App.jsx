@@ -74,21 +74,21 @@ function Main({ me, setMe }) {
   const [page, setPageState] = useState(() => readHash().page)
   const [route, setRoute] = useState(readHash)
   // position in this tab's history (and how far forward you can go) so the ← → buttons know when to grey out
-  const [hist, setHist] = useState(() => ({ i: history.state?.i ?? 0, max: history.state?.max ?? 0 }))
+  const [hist, setHist] = useState(() => ({ i: window.history.state?.i ?? 0, max: window.history.state?.max ?? 0 }))
   const go = (pg, id = null) => {
     const h = `#/${pg}${id != null ? `/${id}` : ''}`
     if (location.hash === h) return window.scrollTo(0, 0)
     const n = { i: hist.i + 1, max: hist.i + 1 }
-    history.pushState(n, '', h)
+    window.history.pushState(n, '', h)
     setHist(n); const r = readHash(); setRoute(r); setPageState(r.page)
     window.scrollTo(0, 0)
   }
   const setPage = pg => go(pg)
   useEffect(() => {
-    if (history.state?.i == null) history.replaceState({ i: 0, max: 0 }, '', location.hash || '#/home')
+    if (window.history.state?.i == null) window.history.replaceState({ i: 0, max: 0 }, '', location.hash || '#/home')
     const on = () => {
       const r = readHash(); setRoute(r); setPageState(r.page)
-      setHist(h => ({ i: history.state?.i ?? 0, max: Math.max(h.max, history.state?.i ?? 0) }))
+      setHist(h => ({ i: window.history.state?.i ?? 0, max: Math.max(h.max, window.history.state?.i ?? 0) }))
     }
     window.addEventListener('popstate', on)
     return () => window.removeEventListener('popstate', on)
@@ -213,8 +213,8 @@ function Main({ me, setMe }) {
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
         <div className="navarrows">
-          <button title="Back" disabled={hist.i <= 0} onClick={() => history.back()}>‹</button>
-          <button title="Forward" disabled={hist.i >= hist.max} onClick={() => history.forward()}>›</button>
+          <button title="Back" disabled={hist.i <= 0} onClick={() => window.history.back()}>‹</button>
+          <button title="Forward" disabled={hist.i >= hist.max} onClick={() => window.history.forward()}>›</button>
         </div>
         <div className="links">
           {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['league', 'League'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
