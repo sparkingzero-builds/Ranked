@@ -62,8 +62,37 @@ export default function App() {
   return <Main me={me} setMe={setMe} />
 }
 
+// pages live in the URL hash (#/league, #/profile/<id>, #/anime/<id>) so browser back/forward, phone swipe-back,
+// refresh and shared links all work
+const PAGES = ['home', 'browse', 'list', 'rank', 'h2h', 'season', 'league', 'mates', 'squad', 'stats', 'market', 'profile', 'anime']
+function readHash() {
+  const [, pg, id] = (location.hash.match(/^#\/([a-z0-9]+)(?:\/([^/?#]+))?/) || [])
+  return PAGES.includes(pg) ? { page: pg, id: id || null } : { page: 'home', id: null }
+}
+
 function Main({ me, setMe }) {
-  const [page, setPage] = useState('home')
+  const [page, setPageState] = useState(() => readHash().page)
+  const [route, setRoute] = useState(readHash)
+  // position in this tab's history (and how far forward you can go) so the ← → buttons know when to grey out
+  const [hist, setHist] = useState(() => ({ i: history.state?.i ?? 0, max: history.state?.max ?? 0 }))
+  const go = (pg, id = null) => {
+    const h = `#/${pg}${id != null ? `/${id}` : ''}`
+    if (location.hash === h) return window.scrollTo(0, 0)
+    const n = { i: hist.i + 1, max: hist.i + 1 }
+    history.pushState(n, '', h)
+    setHist(n); const r = readHash(); setRoute(r); setPageState(r.page)
+    window.scrollTo(0, 0)
+  }
+  const setPage = pg => go(pg)
+  useEffect(() => {
+    if (history.state?.i == null) history.replaceState({ i: 0, max: 0 }, '', location.hash || '#/home')
+    const on = () => {
+      const r = readHash(); setRoute(r); setPageState(r.page)
+      setHist(h => ({ i: history.state?.i ?? 0, max: Math.max(h.max, history.state?.i ?? 0) }))
+    }
+    window.addEventListener('popstate', on)
+    return () => window.removeEventListener('popstate', on)
+  }, [])
   const [username, setUsername] = useStored('ranked.user', 'AspextPro')
   const [user, setUser] = useState(null)
   const [alList, setList] = useState([])
@@ -102,7 +131,7 @@ function Main({ me, setMe }) {
   }
   const [flashMsg, setFlashMsg] = useState(null)
   const flash = t => { setFlashMsg(t); setTimeout(() => setFlashMsg(null), 3500) }
-  const [profileId, setProfileId] = useState(null)
+  const profileId = route.page === 'profile' ? route.id : null
   const [toast, setToast] = useState(null)
   useRankHistory(rankings, history, setHistory)
   const synced = useRowSync('user_state', me?.id, [
@@ -134,9 +163,9 @@ function Main({ me, setMe }) {
       top10: (rankings['10'] || []).length, charTop: (extra.chars || []).length, season: (extra.season?.[`${season.season}-${season.year}`] || []).length }
   }, [list, ratings, rankings, extra])
   useAchievements(me, achLocal, a => { setToast(a); setTimeout(() => setToast(null), 4500) }, [me?.id, page, list.length, achLocal.ratings, achLocal.top10, achLocal.charTop, achLocal.season])
-  const openProfile = id => { setProfileId(id); setPage('profile') }
-  const [animeId, setAnimeId] = useState(null)
-  const openAnime = id => { setAnimeId(id); setPage('anime') }
+  const openProfile = id => go('profile', id)
+  const animeId = route.page === 'anime' && route.id ? +route.id : null
+  const openAnime = id => go('anime', id)
   // +1 episode: finishing the last episode marks it Finished; starting a planned show marks it Watching
   const [epPrompt, setEpPrompt] = useState(null)
   const setProgress = (m, n) => {
@@ -183,6 +212,10 @@ function Main({ me, setMe }) {
     <>
       <nav className="nav">
         <div className="logo" onClick={() => setPage('home')}>R<span>.</span></div>
+        <div className="navarrows">
+          <button title="Back" disabled={hist.i <= 0} onClick={() => history.back()}>‹</button>
+          <button title="Forward" disabled={hist.i >= hist.max} onClick={() => history.forward()}>›</button>
+        </div>
         <div className="links">
           {[['home', 'Home'], ['browse', 'Browse'], ['list', 'Anime List'], ['rank', 'Rankings'], ['h2h', 'Head-to-Head'], ['season', 'Season'], ['league', 'League'], ['squad', 'Squad'], ['stats', 'Stats'], ['market', 'Market']].map(([k, l]) =>
             <button key={k} className={page === k ? 'on' : ''} onClick={() => setPage(k)}>{l}</button>)}

@@ -981,3 +981,8 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .hpgrid.nomain { grid-template-columns: repeat(3, 1fr); }
 .hpempty { margin: 0 0 22px; padding: 14px 16px; background: #140e35; border-left: 4px solid var(--acc); color: #d9d4ff; }
 @media (max-width: 860px) { .hpgrid.nomain { grid-template-columns: 1fr; } }
+.navarrows { display: flex; gap: 4px; flex: none; }
+.navarrows button { width: 34px; height: 34px; border: 0; background: #ffffff12; color: #fff; font-size: 26px; line-height: 1; cursor: pointer; transform: skewX(-10deg); padding-bottom: 4px; }
+.navarrows button:hover:not(:disabled) { background: var(--blue); color: #120c2c; }
+.navarrows button:disabled { opacity: .25; cursor: default; }
+@media (max-width: 760px) { .nav .logo { margin-right: 0; } .navarrows { margin-right: auto; } .navarrows button { width: 32px; height: 32px; } }
