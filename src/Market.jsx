@@ -18,11 +18,13 @@ function useMarket(me) {
   const [events, setEvents] = useState([])
   const timer = useRef()
   const sparkAt = useRef(0)
+  const [pre, setPre] = useState([])
 
   async function load() {
     sb.from('market_events').select('*').gt('ends_at', new Date().toISOString()).then(({ data }) => setEvents(data || []))
+    sb.from('ipo_preorders').select('*').eq('user_id', me.id).then(({ data }) => setPre(data || []))
     const [c, n, w] = await Promise.all([
-      fetchAll(() => sb.from('characters').select('id, name, sym, image, media_title, color, price, price_24h, power, p0, base, hype, hype_at, ipo_at, event_until, event_label, event_key, updated_at').order('id')).then(data => ({ data })),
+      fetchAll(() => sb.from('characters').select('id, name, sym, image, media_title, color, price, price_24h, power, p0, base, hype, hype_at, ipo_at, ipo_filled, rumour, rumour_until, event_until, event_label, event_key, updated_at').order('id')).then(data => ({ data })),
       sb.from('news').select('*').order('created_at', { ascending: false }).limit(40),
       sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(),
     ])
@@ -42,7 +44,7 @@ function useMarket(me) {
       .subscribe()
     return () => { sb.removeChannel(ch); clearTimeout(timer.current) }
   }, [me.id])
-  return { chars, sparks, news, wallet, setWallet, events }
+  return { chars, sparks, news, wallet, setWallet, events, pre, reload: load }
 }
 
 export default function Market({ me, friends = [] }) {
@@ -51,7 +53,7 @@ export default function Market({ me, friends = [] }) {
 }
 
 function MarketLive({ me, friends }) {
-  const { chars, sparks, news, wallet, setWallet, events } = useMarket(me)
+  const { chars, sparks, news, wallet, setWallet, events, pre, reload } = useMarket(me)
   const [selId, setSelId] = useState(null)
   const [view, setView] = useState('market')
   const [sort, setSort] = useState('hype')
@@ -76,6 +78,11 @@ function MarketLive({ me, friends }) {
     setErr('')
     const { data, error } = await sb.rpc('trade', { p_char: c.id, p_qty: qty })
     if (error) setErr(error.message); else setWallet(data)
+  }
+  async function preorder(c, qty) {
+    setErr('')
+    const { error } = await sb.rpc('ipo_preorder', { p_char: c.id, p_qty: qty })
+    if (error) setErr(error.message); else reload()
   }
   async function reset() {
     if (!confirm('Reset your wallet to 10,000 coins?')) return
@@ -115,6 +122,8 @@ function MarketLive({ me, friends }) {
         </div>
       </div>
       {err && <div className="error">{err}</div>}
+      <CrashBanner wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} />
+      {view === 'market' && <LaunchStrip chars={chars} pre={pre} onPick={setSelId} />}
 
       {view === 'market' && <div className="mgrid">
         <section>
@@ -130,11 +139,11 @@ function MarketLive({ me, friends }) {
           </div>
           {limit < list.length && <MoreSentinel onMore={() => setLimit(l => l + 60)} left={list.length - limit} />}
         </section>
-        <aside><StockPanel c={sel} wallet={wallet} trade={trade} /></aside>
+        <aside><StockPanel c={sel} wallet={wallet} trade={trade} preorder={preorder} myPre={pre.find(x => x.char_id === sel.id)} /></aside>
       </div>}
 
       {view === 'portfolio' && <OpenOrders byId={byId} />}
-      {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} trade={trade} />}
+      {view === 'portfolio' && <Portfolio wallet={wallet} byId={byId} onPick={id => { setSelId(id); setView('market') }} reset={reset} trade={trade} pre={pre} />}
       {view === 'board' && <Leaderboard byId={byId} friends={friends} me={me} />}
       {view === 'bets' && <Bets chars={chars} byId={byId} friends={friends} me={me} wallet={wallet} refresh={async () => {
         const { data } = await sb.from('wallets').select('*').eq('user_id', me.id).maybeSingle(); if (data) setWallet(data)
@@ -215,7 +224,7 @@ function WhyPanel({ c: base }) {
   )
 }
 
-function StockPanel({ c, wallet, trade }) {
+function StockPanel({ c, wallet, trade, preorder, myPre }) {
   const [hours, setHours] = useState(24)
   const [qty, setQty] = useState(1)
   const [busy, setBusy] = useState(false)
@@ -247,7 +256,19 @@ function StockPanel({ c, wallet, trade }) {
       </div>
       <WhyPanel c={c} />
       <OrdersBox c={c} />
-      <div className="tradebox">
+      {isSoon(c) ? <div className="tradebox preorder">
+        <div className="pohead">🚀 IPO launches in <b><Ticker fn={() => fmtLeft(new Date(c.ipo_at) - Date.now())} /></b></div>
+        <div className="muted small">Pre-order now at the fixed IPO price of <b>{coins(c.price)}</b>. Your shares land the second it goes live, and you get the 🚀 First buyer badge.</div>
+        <div className="row gap">
+          <button className="pill ghost" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
+          <input className="search qty" type="number" min="1" value={qty} onChange={e => setQty(Math.max(1, Math.floor(+e.target.value) || 1))} />
+          <button className="pill ghost" onClick={() => setQty(qty + 1)}>+</button>
+          <button className="pill ghost" onClick={() => setQty(Math.max(1, maxBuy))}>Max</button>
+        </div>
+        <div className="muted small">Total: {coins(c.price * qty)} coins (taken now)</div>
+        <button className="pill buy" disabled={busy || qty > maxBuy} onClick={async () => { setBusy(true); await preorder(c, qty); setBusy(false) }}>Pre-order {qty}</button>
+        {myPre && <div className="hold">You've pre-ordered <b>{myPre.qty}</b> @ {coins(myPre.price)}</div>}
+      </div> : <div className="tradebox">
         <div className="row gap">
           <button className="pill ghost" onClick={() => setQty(Math.max(1, qty - 1))}>−</button>
           <input className="search qty" type="number" min="1" value={qty} onChange={e => setQty(Math.max(1, Math.floor(+e.target.value) || 1))} />
@@ -262,12 +283,12 @@ function StockPanel({ c, wallet, trade }) {
         </div>
         {!h && <div className="muted small">You don't own any {c.sym} yet, so there's nothing to sell.</div>}
         {h && <div className="hold">You own <b>{h.qty}</b> @ {coins(h.avg)} · P/L <b className={c.price >= h.avg ? 'up' : 'down'}>{coins((c.price - h.avg) * h.qty)}</b></div>}
-      </div>
+      </div>}
     </div>
   )
 }
 
-function Portfolio({ wallet, byId, onPick, reset, trade }) {
+function Portfolio({ wallet, byId, onPick, reset, trade, pre = [] }) {
   const [busy, setBusy] = useState(null)
   const sell = async (e, c, n) => { e.stopPropagation(); setBusy(c.id); await trade(c, -n); setBusy(null) }
   const rows = Object.entries(wallet.holdings || {}).map(([id, h]) => ({ c: byId[id], ...h })).filter(r => r.c)
@@ -280,7 +301,7 @@ function Portfolio({ wallet, byId, onPick, reset, trade }) {
             const pl = (c.price - avg) * qty
             return <div key={c.id} className="srow" onClick={() => onPick(c.id)}>
               <img src={c.image} alt="" />
-              <div className="sname"><b>{c.name}</b><span>{c.sym} · {qty} shares @ {coins(avg)}</span></div>
+              <div className="sname"><b>{c.name}{pre.some(x => x.char_id === c.id && x.filled) && <span className="badge first" title="Pre-ordered before the IPO launched">🚀 First buyer</span>}</b><span>{c.sym} · {qty} shares @ {coins(avg)}</span></div>
               <div className="sprice"><b>{coins(c.price * qty)}</b><span className={pl >= 0 ? 'up' : 'down'}>{pl >= 0 ? '+' : ''}{coins(pl)} ({pct(c.price / avg - 1)})</span></div>
               <div className="psell">
                 <button className="pill sell" disabled={busy === c.id} onClick={e => sell(e, c, 1)}>Sell 1</button>
@@ -333,13 +354,17 @@ function Leaderboard({ byId, friends, me }) {
   )
 }
 
-const isIpo = c => c.ipo_at && Date.now() - new Date(c.ipo_at) < 48 * 3600000
+const isSoon = c => c.ipo_at && new Date(c.ipo_at) > Date.now()
+const isIpo = c => c.ipo_at && !isSoon(c) && Date.now() - new Date(c.ipo_at) < 48 * 3600000
+const hasRumour = c => c.rumour && new Date(c.rumour_until) > Date.now()
 const isEvent = c => c.event_until && new Date(c.event_until) > Date.now()
 const eventScore = c => (isIpo(c) ? 2 : 0) + (isEvent(c) ? 1 : 0)
 
 function Badges({ c, big }) {
   return <>
+    {isSoon(c) && <span className={`badge soon ${big ? 'big' : ''}`} title="Launching soon: pre-order at the IPO price">🚀 {big ? <>Launches in <Ticker fn={() => fmtLeft(new Date(c.ipo_at) - Date.now())} /></> : 'SOON'}</span>}
     {isIpo(c) && <span className={`badge ipo ${big ? 'big' : ''}`} title="New listing: +15% hype for 48h">IPO</span>}
+    {hasRumour(c) && <span className={`badge rumour ${big ? 'big' : ''}`} title={`Insider tip: ${c.rumour}`}>🔮 {big ? c.rumour : 'RUMOUR'}</span>}
     {isEvent(c) && (c.event_key?.startsWith('m')
       ? <span className={`badge ch ${big ? 'big' : ''}`} title={`Chapter day: ${c.event_label}`}>📚 {big ? c.event_label : 'CH DAY'}</span>
       : <span className={`badge ep ${big ? 'big' : ''}`} title={`Episode day: ${c.event_label}`}>🎬 {big ? c.event_label : 'EP DAY'}</span>)}
@@ -553,4 +578,29 @@ function MoreSentinel({ onMore, left }) {
     return () => io.disconnect()
   }, [onMore])
   return <button ref={ref} className="pill ghost more" onClick={onMore}>Show more ({left} left)</button>
+}
+
+// red banner when anything you hold is down 15%+ today
+function CrashBanner({ wallet, byId, onPick }) {
+  const hit = Object.entries(wallet.holdings || {}).map(([id, h]) => ({ c: byId[id], h })).filter(({ c }) => c && c.price_24h > 0 && c.price <= c.price_24h * 0.85)
+  if (!hit.length) return null
+  return <div className="crash">
+    <b>📉 Crash alert</b>
+    {hit.map(({ c, h }) => <button key={c.id} onClick={() => onPick(c.id)}>${c.sym} <em>{pct(change24(c))}</em> · you hold {h.qty}</button>)}
+  </div>
+}
+
+// upcoming IPOs with live countdowns
+function LaunchStrip({ chars, pre, onPick }) {
+  const soon = chars.filter(isSoon).sort((a, b) => new Date(a.ipo_at) - new Date(b.ipo_at))
+  if (!soon.length) return null
+  return <div className="launch">
+    <h3>🚀 Launching soon</h3>
+    <div className="launchrow">{soon.map(c => <div key={c.id} className="lcard" onClick={() => onPick(c.id)} style={{ '--c': c.color || '#ffd60a' }}>
+      <img src={c.image} alt="" />
+      <div><b>{c.name}</b><span>${c.sym} · {c.media_title}</span>
+        <em><Ticker fn={() => fmtLeft(new Date(c.ipo_at) - Date.now())} /></em>
+        <small>IPO price {coins(c.price)}{pre.some(x => x.char_id === c.id) ? ' · pre-ordered ✓' : ''}</small></div>
+    </div>)}</div>
+  </div>
 }

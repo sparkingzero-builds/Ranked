@@ -814,3 +814,21 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 
 .psell { display: flex; gap: 6px; flex: none; } .psell .pill { font-size: 12px; padding: 6px 10px; }
 @media (max-width: 760px) { .stocks .srow { flex-wrap: wrap; } .psell { width: 100%; justify-content: flex-end; } }
+
+/* ===== Crash alerts / rumours / IPO hype week ===== */
+.crash { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; margin: 0 0 14px; background: linear-gradient(90deg, #7a0a1f, #3a0820); border-left: 5px solid #ff4d6d; animation: crashpulse 1.6s ease-in-out infinite; }
+.crash b { font-family: var(--display); font-weight: 400; text-transform: uppercase; letter-spacing: 1px; color: #fff; font-size: 18px; }
+.crash button { border: 0; background: #0005; color: #fff; padding: 5px 10px; cursor: pointer; font-weight: 700; transform: skewX(-10deg); }
+.crash button em { color: #ff8fa3; font-style: normal; }
+@keyframes crashpulse { 50% { box-shadow: 0 0 24px #ff4d6d66; } }
+.badge.rumour { background: linear-gradient(90deg, #7b2ff7, #c13cff); color: #fff; }
+.badge.soon { background: linear-gradient(90deg, #ff2e88, #ff6a00); color: #fff; }
+.badge.first { background: var(--blue); color: #120c2c; margin-left: 6px; }
+.launch { margin: 0 0 16px; } .launch h3 { margin: 0 0 8px; }
+.launchrow { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }
+.lcard { flex: none; display: flex; gap: 10px; width: 280px; padding: 8px; cursor: pointer; background: linear-gradient(135deg, color-mix(in srgb, var(--c) 35%, #1a1245), #120d30); border-top: 3px solid #ff2e88; }
+.lcard img { width: 64px; height: 86px; object-fit: cover; }
+.lcard b { display: block; color: #fff; font-size: 15px; } .lcard span, .lcard small { display: block; color: #a49ccf; font-size: 11px; }
+.lcard em { display: block; font-style: normal; font-family: var(--display); font-size: 22px; color: var(--blue); margin: 4px 0 2px; }
+.tradebox.preorder { border: 2px solid #ff2e88; }
+.pohead { font-family: var(--display); text-transform: uppercase; letter-spacing: 1px; font-size: 18px; color: #fff; } .pohead b { color: var(--blue); font-weight: 400; }

@@ -44,7 +44,12 @@ const ymd = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '')
 // Lists the top `count` AniList characters by favourites; already-listed ones are skipped,
 // so calling it again with a bigger count just adds the next tier of characters.
 async function seed(count = 50) {
-  const { data: existing } = await db.from('characters').select('id, sym')
+  // page through every listing (one select stops at 1,000 rows)
+  const existing: any[] = []
+  for (let from = 0; ; from += 1000) {
+    const { data } = await db.from('characters').select('id, sym').range(from, from + 999)
+    existing.push(...(data || [])); if (!data || data.length < 1000) break
+  }
   const have = new Set((existing || []).map(c => c.id))
   const taken = new Set<string>((existing || []).map(c => c.sym))
   const rows: any[] = []
@@ -90,12 +95,12 @@ async function ipo(count = 5) {
     const p0 = Math.round(2000 + Math.sqrt(c.favourites) * 30), base = +(15 + Math.sqrt(c.favourites) / 2.2).toFixed(2)
     const title = m.title.english || m.title.romaji
     return { id: c.id, name: c.name.full, sym, image: c.image.large, favourites: c.favourites, media_title: title, color: m.coverImage.color,
-      p0, base, power: p0, price: +(base * 0.8).toFixed(2), price_24h: +(base * 0.8).toFixed(2), ipo_at: new Date().toISOString() }
+      p0, base, power: p0, price: +(base * 0.8).toFixed(2), price_24h: +(base * 0.8).toFixed(2), ipo_at: new Date(Date.now() + 48 * 3600000).toISOString(), ipo_filled: false }
   })
   if (rows.length) {
     await db.from('characters').insert(rows)
     await db.from('news').insert(rows.map(r => ({ char_id: r.id, up: true, source: 'trending',
-      text: `IPO: $${r.sym} (${r.name.toUpperCase()}) LISTS TODAY from ${r.media_title}. Launch price ${r.price}` })))
+      text: `🚀 COMING SOON: $${r.sym} (${r.name.toUpperCase()}) from ${r.media_title} launches in 48h. Pre-order now at ${r.price}` })))
   }
   return { listed: rows.map(r => r.sym) }
 }
@@ -284,7 +289,7 @@ async function collect(chunkArg?: number) {
   const alBy: Record<number, any> = {}
   for (let k = 0; k < ids.length; k += 50) {
     const al = await anilist(`query($ids:[Int]){ Page(perPage:50){ characters(id_in:$ids){ id favourites
-      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { id status trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } }
+      media(type:ANIME, perPage:10, sort:START_DATE_DESC){ nodes { id status episodes trending nextAiringEpisode { episode timeUntilAiring } title { romaji english } } }
       manga: media(type:MANGA, perPage:1, sort:POPULARITY_DESC){ nodes { id status trending title { romaji english } } } } } }`, { ids: ids.slice(k, k + 50) })
     for (const c of al?.data?.Page?.characters || []) alBy[c.id] = c
   }
@@ -393,6 +398,19 @@ async function collect(chunkArg?: number) {
           if (c.event_key !== key) {
             await db.from('characters').update({ event_key: key, event_label: `${showName} ep ${ep}`, event_until: new Date(Date.now() + 86400000).toISOString() }).eq('id', c.id)
             await db.from('news').insert({ char_id: c.id, up: true, source: 'airing', text: `EPISODE DAY: ${showName.toUpperCase()} EP ${ep} IS OUT. $${c.sym} gets a 24h hype boost` })
+          }
+        }
+        // Insider tip: a premiere or season finale airing within 36h gets a rumour a day early, so people can buy in first
+        const big = shows.filter((n: any) => n.nextAiringEpisode && n.nextAiringEpisode.timeUntilAiring > 0 && n.nextAiringEpisode.timeUntilAiring < 36 * 3600
+          && (n.nextAiringEpisode.episode === 1 || (n.episodes && n.nextAiringEpisode.episode === n.episodes)))[0]
+        if (big) {
+          const ep = big.nextAiringEpisode.episode, rkey = `r${big.id}-${ep}`
+          if (c.rumour_key !== rkey) {
+            const what = ep === 1 ? 'PREMIERE' : 'SEASON FINALE', show = (big.title.english || big.title.romaji)
+            const hrs = Math.round(big.nextAiringEpisode.timeUntilAiring / 3600)
+            await db.from('characters').update({ rumour_key: rkey, rumour: `${show} ${what.toLowerCase()} in ~${hrs}h`,
+              rumour_until: new Date(Date.now() + (big.nextAiringEpisode.timeUntilAiring + 6 * 3600) * 1000).toISOString() }).eq('id', c.id)
+            await db.from('news').insert({ char_id: c.id, up: true, source: 'rumour', text: `🔮 RUMOUR: ${show.toUpperCase()} ${what} DROPS IN ~${hrs}H. $${c.sym} COULD BE ABOUT TO MOVE` })
           }
         }
         const backOn = live ? new Date(Date.now() + until * 1000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : ''

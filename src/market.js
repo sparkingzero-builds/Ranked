@@ -18,4 +18,5 @@ export const SOURCES = {
   mal: { label: 'MyAnimeList', icon: '❤️', note: 'New favourites' },
   manga: { label: 'Manga', icon: '📚', note: 'New chapters (MangaDex) + manga page views + AniList manga trending' },
   event: { label: 'Market event', icon: '⚡', note: 'Crash, bull run or hype week' },
+  rumour: { label: 'Insider tip', icon: '🔮', note: 'A premiere or season finale is about to drop' },
 }

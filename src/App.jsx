@@ -411,9 +411,10 @@ function HeadToHead(props) {
   return <>
     <div className="tabs kindtabs">
       <button className={mode === 'hype' ? 'on' : ''} onClick={() => setMode('hype')}>🔥 Hypest Moment Ever</button>
+      <button className={mode === 'song' ? 'on' : ''} onClick={() => setMode('song')}>🎵 Openings &amp; Endings</button>
       <button className={mode === 'anime' ? 'on' : ''} onClick={() => setMode('anime')}>Anime vs Anime</button>
     </div>
-    {mode === 'hype' ? <HypeBracket me={props.me} friends={props.friends} /> : <AnimeH2H {...props} />}
+    {mode === 'hype' ? <HypeBracket key="moment" me={props.me} friends={props.friends} /> : mode === 'song' ? <HypeBracket key="song" mode="song" me={props.me} friends={props.friends} /> : <AnimeH2H {...props} />}
   </>
 }
 

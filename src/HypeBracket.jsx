@@ -1,14 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import { MOMENTS, MOMENT, FRANCHISES, thumb } from './moments.js'
+import { SONGS, SONG, SONG_FRANCHISES } from './songs.js'
+
+// the same bracket runs on hype moments or on anime openings/endings
+export const MODES = {
+  moment: { kind: 'moment', items: MOMENTS, byId: MOMENT, groups: FRANCHISES, key: 'ranked.hype', title: 'HYPEST MOMENT EVER', noun: 'moment', nouns: 'moments',
+    blurb: 'Clips play once, back to back. Pick the hyper one each time until one moment stands alone.', question: 'Which was hyper?', play: 'Play the clips',
+    champLine: 'Your hypest moment ever', squadLine: "Squad's hypest moments" },
+  song: { kind: 'song', items: SONGS, byId: SONG, groups: SONG_FRANCHISES, key: 'ranked.songs', title: 'OPENING & ENDING BATTLES', noun: 'song', nouns: 'songs',
+    blurb: 'Openings and endings play once, back to back. Pick the better one each time until one song is left.', question: 'Which song goes harder?', play: 'Play the songs',
+    champLine: 'Your greatest anime song', squadLine: "Squad's greatest songs" },
+}
+let C = MODES.moment  // set per render; only one bracket is on screen at a time
 import { sb, logActivity } from './cloud.js'
 
 // round name from how many moments are still in it
 const roundName = n => n === 2 ? 'Final' : n === 4 ? 'Semi-finals' : n === 8 ? 'Quarter-finals' : `Round of ${n}`
 const SIZES = [8, 16, 32, 64, 128]
-const SIZE_KEY = 'ranked.hype.size'
-const PICKED = 'ranked.hype.franchises'
-const RUN = 'ranked.hype.run'
-const DONE = 'ranked.hype.done'
+const K = name => `${C.key}.${name}`  // localStorage keys per mode
 const load = k => { try { return JSON.parse(localStorage.getItem(k)) } catch { return null } }
 const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)) } catch {} }
 const shuffle = a => { const b = [...a]; for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]] } return b }
@@ -58,35 +67,36 @@ function Clip({ moment, onDone }) {
   )
 }
 
-export default function HypeBracket({ me, friends = [] }) {
+export default function HypeBracket({ me, friends = [], mode = 'moment' }) {
+  C = MODES[mode]
   const online = !!(sb && me)
   const [played, setPlayed] = useState(null)       // finished bracket (server row or local), or false
-  const [run, setRun] = useState(() => load(RUN))
+  const [run, setRun] = useState(() => load(K('run')))
   const [phase, setPhase] = useState('A')          // A -> B -> vote, for the current matchup
   const [started, setStarted] = useState(false)
   const [all, setAll] = useState([])
 
   useEffect(() => {
     if (online) {
-      sb.from('hype_brackets').select('*').then(({ data }) => {
+      sb.from('hype_brackets').select('*').eq('kind', C.kind).then(({ data }) => {
         setAll(data || [])
         setPlayed((data || []).find(r => r.user_id === me.id) || false)
       })
-    } else setPlayed(load(DONE) || false)
-  }, [online, me?.id])
-  useEffect(() => { if (run) save(RUN, run) }, [run])
+    } else setPlayed(load(K('done')) || false)
+  }, [online, me?.id, mode])
+  useEffect(() => { if (run) save(K('run'), run) }, [run])
 
   // start over: wipes the bracket in progress, and your saved champion if you'd finished
   async function reset() {
     if (!confirm(played ? 'Reset your bracket? Your champion will be removed and you can play again.' : 'Restart the bracket from the beginning?')) return
     if (played) {
       if (online) {
-        const { error } = await sb.from('hype_brackets').delete().eq('user_id', me.id)
+        const { error } = await sb.from('hype_brackets').delete().eq('user_id', me.id).eq('kind', C.kind)
         if (error) return alert(error.message)
         setAll(a => a.filter(r => r.user_id !== me.id))
-      } else localStorage.removeItem(DONE)
+      } else localStorage.removeItem(K('done'))
     }
-    localStorage.removeItem(RUN)
+    localStorage.removeItem(K('run'))
     setRun(null); setPlayed(false); setPhase('A'); setStarted(false)
   }
 
@@ -98,7 +108,7 @@ export default function HypeBracket({ me, friends = [] }) {
   const round = currentRound(run)
   const entrants = round === 0 ? run.order : run.picks[round - 1]
   const match = (run.picks[round] || []).length
-  const A = MOMENT[entrants[match * 2]], B = MOMENT[entrants[match * 2 + 1]]
+  const A = C.byId[entrants[match * 2]], B = C.byId[entrants[match * 2 + 1]]
 
   async function pick(winner) {
     const picks = run.picks.map(r => [...r])
@@ -109,14 +119,14 @@ export default function HypeBracket({ me, friends = [] }) {
   async function finish(picks) {
     picks = picks.filter(r => r.length)
     const champion = picks[picks.length - 1][0]
-    const row = { champion, picks, order: run.order }
+    const row = { champion, picks, order: run.order, kind: C.kind }
     if (online) {
       const { data, error } = await sb.from('hype_brackets').insert(row).select().single()
       if (error) return alert(error.message)
-      logActivity('hype_champ', { title: MOMENT[champion].title, cover: thumb(MOMENT[champion]) })
+      logActivity('hype_champ', { title: C.byId[champion].title, cover: thumb(C.byId[champion]), mode: C.kind })
       setAll(a => [...a, data]); setPlayed(data)
-    } else { save(DONE, { ...row, user_id: 'local' }); setPlayed({ ...row, user_id: 'local' }) }
-    localStorage.removeItem(RUN)
+    } else { save(K('done'), { ...row, user_id: 'local' }); setPlayed({ ...row, user_id: 'local' }) }
+    localStorage.removeItem(K('run'))
   }
 
   return (
@@ -127,11 +137,11 @@ export default function HypeBracket({ me, friends = [] }) {
         <Expand run={run} onExpand={order => { setRun({ ...run, order }); setPhase('A') }} />
         <button className="pill ghost" onClick={reset}>↺ Restart</button>
       </div>
-      {!started ? <button className="pill lgo" onClick={() => setStarted(true)}>▶ Play the clips</button>
+      {!started ? <button className="pill lgo" onClick={() => setStarted(true)}>▶ {C.play}</button>
         : phase === 'A' ? <Clip key={'A' + A.id} moment={A} onDone={() => setPhase('B')} />
         : phase === 'B' ? <Clip key={'B' + B.id} moment={B} onDone={() => setPhase('vote')} />
         : <div className="hvote">
-            <div className="kicker">Which was hyper?</div>
+            <div className="kicker">{C.question}</div>
             <div className="row gap">{[A, B].map(m => <button key={m.id} className="pill hpick" onClick={() => pick(m.id)}>{m.title}</button>)}</div>
           </div>}
       <div className="hvs">
@@ -159,16 +169,16 @@ function currentRound(run) {
 // New moments are added as a second half: they play their side first, then meet your existing winners.
 function Expand({ run, onExpand }) {
   const [open, setOpen] = useState(false)
-  const picked = new Set(load(PICKED) || FRANCHISES)
+  const picked = new Set(load(K('franchises')) || C.groups)
   const used = new Set(run.order)
-  const spare = shuffle(MOMENTS.filter(m => picked.has(m.f) && !used.has(m.id)).map(m => m.id))
+  const spare = shuffle(C.items.filter(m => picked.has(m.f) && !used.has(m.id)).map(m => m.id))
   const n = run.order.length
   const options = SIZES.filter(t => t > n && t - n <= spare.length && Number.isInteger(Math.log2(t / n)))
   if (!options.length) return null
   return <span className="hexpand">
     <button className="pill ghost" onClick={() => setOpen(!open)}>⤢ Expand</button>
     {open && <span className="hexopts">{options.map(t => <button key={t} className="pill" onClick={() => {
-      if (!confirm(`Expand to ${t} moments? ${t - n} new moments join, and your picks so far are kept.`)) return
+      if (!confirm(`Expand to ${t} ${C.nouns}? ${t - n} new ${C.nouns} join, and your picks so far are kept.`)) return
       onExpand([...run.order, ...spare.slice(0, t - n)]); setOpen(false)
     }}>{n} → {t}</button>)}</span>}
   </span>
@@ -176,32 +186,32 @@ function Expand({ run, onExpand }) {
 
 // Pick which anime to include; the bracket uses a random 4/8/16/32 of those moments.
 function Intro({ onStart }) {
-  const [on, setOn] = useState(() => new Set(load(PICKED) || FRANCHISES))
-  const pool = MOMENTS.filter(m => on.has(m.f))
-  const [want, setWant] = useState(() => load(SIZE_KEY) || 32)
+  const [on, setOn] = useState(() => new Set(load(K('franchises')) || C.groups))
+  const pool = C.items.filter(m => on.has(m.f))
+  const [want, setWant] = useState(() => load(K('size')) || 32)
   // biggest allowed size that the ticked anime can fill (falls back to 4 for tiny picks)
   const size = pool.length >= want ? want : [...SIZES].reverse().find(n => n <= pool.length) || (pool.length >= 4 ? 4 : 0)
-  const toggle = f => { const n = new Set(on); n.has(f) ? n.delete(f) : n.add(f); setOn(n); save(PICKED, [...n]) }
-  const all = v => { const n = new Set(v ? FRANCHISES : []); setOn(n); save(PICKED, [...n]) }
+  const toggle = f => { const n = new Set(on); n.has(f) ? n.delete(f) : n.add(f); setOn(n); save(K('franchises'), [...n]) }
+  const all = v => { const n = new Set(v ? C.groups : []); setOn(n); save(K('franchises'), [...n]) }
   return (
     <div className="card pad hintro">
       <div className="kicker">New mode</div>
-      <div className="huge sm">HYPEST MOMENT EVER</div>
-      <p>Knockout bracket of legendary moments. Each matchup plays both clips once, then you pick the hypest. Tick the anime you've seen so there are no spoilers.</p>
+      <div className="huge sm">{C.title}</div>
+      <p>{C.blurb} Tick the anime you've seen so there are no spoilers.</p>
       <div className="row hpickhead"><b>Anime to include</b>
         <span><button className="linkbtn" onClick={() => all(true)}>All</button> · <button className="linkbtn" onClick={() => all(false)}>None</button></span></div>
       <div className="hfran">
-        {FRANCHISES.map(f => {
-          const n = MOMENTS.filter(m => m.f === f).length
+        {C.groups.map(f => {
+          const n = C.items.filter(m => m.f === f).length
           return <label key={f} className={`hf ${on.has(f) ? 'on' : ''}`}><input type="checkbox" checked={on.has(f)} onChange={() => toggle(f)} /><span>{f}</span><small>{n}</small></label>
         })}
       </div>
       <div className="row hpickhead"><b>Bracket size</b></div>
       <div className="tabs hsizes">{SIZES.map(n => <button key={n} disabled={pool.length < n} className={size === n ? 'on' : ''}
-        onClick={() => { setWant(n); save(SIZE_KEY, n) }}>{n}</button>)}</div>
+        onClick={() => { setWant(n); save(K('size'), n) }}>{n}</button>)}</div>
       <div className="hgrid">{pool.slice(0, 32).map(m => <img key={m.id} src={thumb(m)} alt={m.title} title={m.title} loading="lazy" />)}</div>
       <div className="row hstart">
-        <span className="muted">{pool.length} moments ticked{size ? ` → ${size}-moment bracket (${size - 1} matchups, ~${Math.round((size - 1) * 2 * 2.5 / 60 * 10) / 10}h if you watch every clip)` : ' (tick at least 4 to play)'}</span>
+        <span className="muted">{pool.length} {C.nouns} ticked{size ? ` → ${size}-${C.noun} bracket (${size - 1} matchups, ~${Math.round((size - 1) * 2 * 2.5 / 60 * 10) / 10}h if you watch every clip)` : ' (tick at least 4 to play)'}</span>
         <button className="pill lgo" disabled={!size} onClick={() => onStart(shuffle(pool.map(m => m.id)).slice(0, size))}>Start the bracket</button>
       </div>
     </div>
@@ -210,7 +220,7 @@ function Intro({ onStart }) {
 
 function Results({ mine, all, friends, me, onReset }) {
   const names = Object.fromEntries(friends.map(f => [f.id, f.username]))
-  const champ = MOMENT[mine.champion]
+  const champ = C.byId[mine.champion]
   // squad ranking: every matchup win is a point, a championship is worth 3
   const pts = {}
   for (const r of all.length ? all : [mine]) {
@@ -222,9 +232,9 @@ function Results({ mine, all, friends, me, onReset }) {
   return (
     <div className="hresults">
       <div className="slide hero hchamp" style={{ backgroundImage: `linear-gradient(120deg, #ff2e63dd, #8a2be2dd), url(${thumb(champ)})` }}>
-        <div className="kicker">Your hypest moment ever</div>
+        <div className="kicker">{C.champLine}</div>
         <div className="mega sm">{champ.title.toUpperCase()}</div>
-        <div className="sub">{champ.anime} · beat {path.filter(Boolean).length} moments to win.</div>
+        <div className="sub">{champ.anime} · beat {path.filter(Boolean).length} {C.nouns} to win.</div>
         <button className="pill ghost hreset" onClick={onReset}>↺ Reset &amp; play again</button>
       </div>
       <div className="two">
@@ -232,16 +242,16 @@ function Results({ mine, all, friends, me, onReset }) {
           <h3>Squad champions</h3>
           <div className="card pad">
             {(all.length ? all : [mine]).map(r => <div key={r.user_id} className="mini">
-              <img src={thumb(MOMENT[r.champion])} alt="" className="hthumb" />
+              <img src={thumb(C.byId[r.champion])} alt="" className="hthumb" />
               <span className="grow">{r.user_id === me?.id || r.user_id === 'local' ? 'You' : names[r.user_id] || '?'}</span>
-              <b className="blue">{MOMENT[r.champion]?.title}</b></div>)}
+              <b className="blue">{C.byId[r.champion]?.title}</b></div>)}
           </div>
         </div>
         <div>
-          <h3>Squad's hypest moments</h3>
+          <h3>{C.squadLine}</h3>
           <div className="card pad">
             {board.map(([id, p], i) => <div key={id} className="mini"><b className={`r r${i + 1}`}>#{i + 1}</b>
-              <img src={thumb(MOMENT[id])} alt="" className="hthumb" /><span className="grow">{MOMENT[id]?.title}</span><span className="muted">{p} pts</span></div>)}
+              <img src={thumb(C.byId[id])} alt="" className="hthumb" /><span className="grow">{C.byId[id]?.title}</span><span className="muted">{p} pts</span></div>)}
           </div>
         </div>
       </div>

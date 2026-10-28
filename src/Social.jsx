@@ -90,7 +90,7 @@ function feedText(a) {
     case 'poll': return <>asked: <b>{p.question}</b></>
     case 'char_top': return <>made <b>{p.name}</b> their #1 character</>
     case 'fantasy_team': return <>drafted their {p.season} fantasy team: <b>{(p.names || []).join(', ')}</b> 🏆</>
-    case 'hype_champ': return <>crowned <b>{p.title}</b> the hypest moment ever 🔥</>
+    case 'hype_champ': return p.mode === 'song' ? <>crowned <b>{p.title}</b> the greatest anime song 🎵</> : <>crowned <b>{p.title}</b> the hypest moment ever 🔥</>
     case 'ep_rate': return <>rated <b>{p.title} ep {p.ep}</b> {p.emoji} <span className="blue">★ {p.score}</span></>
     case 'reset': return <>reset their wallet back to 10,000 coins 🔄</>
     case 'bet': return <>started a bet: <b>{p.a} vs {p.b}</b> ({p.stake} coins, backing {p.pick})</>
