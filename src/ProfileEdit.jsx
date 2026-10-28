@@ -15,8 +15,8 @@ async function search(kind, q) {
 
 // Edit your own profile: banner (any anime's banner), avatar (any character), bio, accent colour,
 // featured achievement as a title, and up to 4 pinned anime.
-export default function ProfileEdit({ me, unlocked, onClose, onSaved }) {
-  const [f, setF] = useState({ banner: me.banner || '', avatar: me.avatar || '', bio: me.bio || '', accent: me.accent || '#ffd60a', title_key: me.title_key || '', showcase: me.showcase || [] })
+export default function ProfileEdit({ me, unlocked, onClose, onSaved, songs = [] }) {
+  const [f, setF] = useState({ banner: me.banner || '', avatar: me.avatar || '', bio: me.bio || '', accent: me.accent || '#ffd60a', title_key: me.title_key || '', showcase: me.showcase || [], anthem: me.anthem || '' })
   const [kind, setKind] = useState('anime')
   const [q, setQ] = useState('')
   const [res, setRes] = useState([])
@@ -53,6 +53,13 @@ export default function ProfileEdit({ me, unlocked, onClose, onSaved }) {
             <option value="">None</option>
             {[...unlocked].map(k => ACH[k] && <option key={k} value={k}>{ACH[k].icon} {ACH[k].label}</option>)}
           </select>
+          {songs.length > 0 && <>
+            <label className="lbl">Profile anthem (plays when someone taps it)</label>
+            <select className="search" value={f.anthem} onChange={e => setF({ ...f, anthem: e.target.value })}>
+              <option value="">None</option>
+              {[...songs].sort((a, b) => a.anime.localeCompare(b.anime)).map(s => <option key={s.id} value={s.id}>{s.anime}: {s.title}</option>)}
+            </select>
+          </>}
           <label className="lbl">Pinned anime ({f.showcase.length}/4)</label>
           <div className="pins">{f.showcase.map(s => <div key={s.id} className="pin" style={{ backgroundImage: `url(${s.cover})` }}>
             <button className="x" onClick={() => setF({ ...f, showcase: f.showcase.filter(x => x.id !== s.id) })}>×</button></div>)}

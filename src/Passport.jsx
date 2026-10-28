@@ -26,7 +26,7 @@ function showRarity(e, x) {
   return ['bronze', '']
 }
 
-function streaks(days) {
+export function streaks(days) {
   const key = t => `${t.getFullYear()}-${t.getMonth() + 1}-${t.getDate()}`
   let cur = 0
   const d = new Date()
@@ -118,7 +118,7 @@ export default function Passport({ list, user }) {
 }
 
 // every collection: [count, tier thresholds]
-function collections(done, extra, st) {
+export function collections(done, extra, st) {
   const X = e => extra[e.media.id] || {}
   const eps = done.reduce((a, e) => a + (e.media.episodes || e.progress || 0), 0)
   const year = e => X(e).startDate?.year || e.media.seasonYear
