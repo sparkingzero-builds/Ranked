@@ -871,3 +871,13 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
 .stamp.r-bronze { --ring: var(--bronze); } .stamp.r-silver { --ring: var(--silver); } .stamp.r-gold { --ring: var(--gold); } .stamp.r-legend { --ring: var(--legend); }
 .stamp.r-legend img { animation: legendglow 2.4s ease-in-out infinite; } @keyframes legendglow { 50% { box-shadow: 0 0 0 3px #0b0720, 0 0 0 5px var(--legend), 0 0 24px var(--legend); } }
 @media (max-width: 760px) { .pphead { grid-template-columns: 1fr; } .ppgrid { grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); } .ppcols { grid-template-columns: 1fr; } }
+.ppexplain { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-bottom: 20px; }
+.ppexplain div { background: #140e35; padding: 12px 14px; font-size: 13px; color: #d9d4ff; border-top: 3px solid var(--blue); line-height: 1.45; }
+.ppexplain b { color: #fff; }
+.ppcol small { display: block; font-size: 11px; color: #d9d4ff; margin: 1px 0 2px; } .ppcol span b { color: #fff; font-size: 11px; }
+.ptier { font-style: normal; font-family: var(--display); font-size: 10px; letter-spacing: 1px; text-transform: uppercase; padding: 1px 6px; margin-left: 4px; background: #ffffff1a; color: #a49ccf; vertical-align: middle; }
+.ptier.t1 { background: var(--bronze); color: #120c2c; } .ptier.t2 { background: var(--silver); color: #120c2c; } .ptier.t3 { background: var(--gold); color: #120c2c; } .ptier.t4 { background: var(--legend); color: #fff; }
+.pplegend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 12px; color: #d9d4ff; margin: 0 0 18px; padding: 10px 12px; background: #140e35; }
+.pplegend span { font-family: var(--display); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; margin-left: 8px; }
+.pplegend span:first-child { margin-left: 0; }
+.lg-legend { background: var(--legend); color: #fff; } .lg-gold { background: var(--gold); color: #120c2c; } .lg-silver { background: var(--silver); color: #120c2c; } .lg-bronze { background: var(--bronze); color: #120c2c; }

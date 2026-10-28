@@ -73,12 +73,20 @@ export default function Passport({ list, user }) {
       </div>
     </div>
 
+    <div className="ppexplain">
+      <div><b>🎟️ Stamps</b> = every show you've finished. Finish a show on AniList and a stamp of it appears below. The ring colour shows how rare it is.</div>
+      <div><b>🏅 Collections</b> = goals. Each one counts something (shows in a genre, films, 10/10 ratings…) and levels up Bronze → Silver → Gold → Legendary as the number grows.</div>
+      <div><b>🔥 Streak</b> = days in a row you've logged at least one episode on AniList.</div>
+    </div>
+
     <h3>Collections</h3>
+    <p className="muted small">What each one counts is written under its name. The bar shows how close you are to the next tier.</p>
     <div className="ppcols">
       {cols.map(c => <div key={c.id} className={`ppcol t${c.lvl}`} title={c.how}>
         <div className="ppseal">{c.icon}</div>
-        <div className="grow"><b>{c.name}</b>
-          <span>{c.lvl ? TIERS[c.lvl - 1][1] : 'Locked'} · {c.n}{c.next ? ` / ${c.next}` : ''}</span>
+        <div className="grow"><b>{c.name} <em className={`ptier t${c.lvl}`}>{c.lvl ? TIERS[c.lvl - 1][1] : 'Locked'}</em></b>
+          <small>{c.how}</small>
+          <span>{c.next ? <>{c.n.toLocaleString()} so far · <b>{(c.next - c.n).toLocaleString()} more</b> for {TIERS[c.lvl][1]}</> : <>{c.n.toLocaleString()} · maxed out 🏆</>}</span>
           <div className="ppbar"><div style={{ width: `${Math.min(100, (c.n / (c.next || c.n || 1)) * 100)}%` }} /></div>
         </div>
       </div>)}
@@ -89,9 +97,16 @@ export default function Passport({ list, user }) {
       <div className="tabs rtabs">{[['all', 'All'], ['legend', 'Legendary'], ['gold', 'Gold'], ['silver', 'Silver'], ['bronze', 'Bronze']].map(([k, l]) =>
         <button key={k} className={filter === k ? 'on' : ''} onClick={() => setFilter(k)}>{l}</button>)}</div>
     </div>
+    <div className="pplegend">
+      <span className="lg-legend">Legendary</span> 500+ episodes (One Piece-level runs)
+      <span className="lg-gold">Gold</span> hidden gem (under 15k viewers) or 100+ episodes
+      <span className="lg-silver">Silver</span> made before 2000, or you rated it 10/10
+      <span className="lg-bronze">Bronze</span> every other show you've finished
+    </div>
     <div className="ppgrid">
       {shown.map((e, i) => { const x = extra[e.media.id]; const [r, tag] = showRarity(e, x); const when = ymd(e.completedAt)
-        return <div key={e.media.id} className={`stamp r-${r}`} style={{ '--rot': `${((e.media.id * 37) % 13) - 6}deg`, '--c': e.media.coverImage.color || '#ffd60a' }}>
+        const why = { legend: 'Legendary: 500+ episodes', gold: tag === 'Hidden gem' ? 'Gold: fewer than 15k people have watched it' : 'Gold: 100+ episodes', silver: tag === 'Classic' ? 'Silver: made before 2000' : 'Silver: you rated it 10/10', bronze: 'Bronze: finished' }[r]
+        return <div key={e.media.id} title={why} className={`stamp r-${r}`} style={{ '--rot': `${((e.media.id * 37) % 13) - 6}deg`, '--c': e.media.coverImage.color || '#ffd60a' }}>
           <img src={e.media.coverImage.large} alt="" loading="lazy" />
           <div className="sring" />
           {tag && <i>{tag}</i>}
