@@ -121,7 +121,10 @@ export default function Profile({ id, me, friends, onProfileSaved, openAnime }) 
   const today = new Date().toISOString().slice(0, 10)
   const hypedToday = p.hypes.some(h => h.from_user === me.id && h.day === today)
   const acc = f.accent || '#ffd60a'
-  const main = (p.st.extra?.chars || [])[0]
+  // main: #1 ranked character, else League captain, else biggest holding
+  const ranked = (p.st.extra?.chars || [])[0]
+  const fallbackId = D.cap || D.holdings.sort((a, b) => b.c.price * b.qty - a.c.price * a.qty)[0]?.c.id
+  const main = ranked || (fallbackId && world?.chars[fallbackId] ? { id: fallbackId, name: world.chars[fallbackId].name, image: world.chars[fallbackId].image, why: D.cap === fallbackId ? 'League captain' : 'Biggest holding' } : null)
   const mainRow = main && world?.chars[main.id]
   const top = (p.st.rankings?.['10'] || []).slice(0, 10)
   const anthem = SONG[f.anthem]
@@ -178,10 +181,10 @@ export default function Profile({ id, me, friends, onProfileSaved, openAnime }) 
         <div key={l}><b>{raw ? v : <Count to={+v || 0} />}</b><span>{l}</span></div>)}
     </div>
 
-    <div className="hpgrid">
+    <div className={`hpgrid ${main ? '' : 'nomain'}`}>
       {main && <div className="hpmain" onClick={() => mainRow && openChar(main.id)} style={{ cursor: mainRow ? 'pointer' : 'default' }}>
         <img src={mainRow?.image || main.image} alt="" referrerPolicy="origin" />
-        <div className="hpmaincap"><span>MAIN</span><b>{main.name}</b>{mainRow?.form && <em>{mainRow.form}</em>}{mainRow && <small>${mainRow.sym} · {coins(mainRow.price)}</small>}</div>
+        <div className="hpmaincap"><span>MAIN{main.why ? ` · ${main.why.toUpperCase()}` : ''}</span><b>{main.name}</b>{mainRow?.form && <em>{mainRow.form}</em>}{mainRow && <small>${mainRow.sym} · {coins(mainRow.price)}</small>}</div>
       </div>}
 
       <div className="hpcard hpleague">
@@ -215,7 +218,8 @@ export default function Profile({ id, me, friends, onProfileSaved, openAnime }) 
 
     {M && <Rivalry them={{ ...D, p }} me={{ ...M, p: mine }} name={f.username} />}
 
-    {top.length > 0 && <TopTen ids={top} openAnime={openAnime} />}
+    {top.length > 0 ? <TopTen ids={top} openAnime={openAnime} />
+      : id === me.id && <div className="hpempty">🏅 Your Top 10 is empty. Build it on the <b>Rankings</b> page and it shows up here as a podium.</div>}
 
     {p.act.length > 0 && <><h3>Recently</h3>
       <div className="hpact">{p.act.map(a => <div key={a.id}>{a.payload?.cover && <img src={a.payload.cover} alt="" />}<span>{actText(a)}</span></div>)}</div></>}
@@ -262,12 +266,12 @@ function actText(a) {
     case 'rate': return <>rated <b>{p.title}</b> {p.score}/10</>
     case 'top1': return <>made <b>{p.title}</b> their #1</>
     case 'char_top': return <>made <b>{p.name}</b> their #1 character</>
-    case 'status': return <>{p.status?.toLowerCase?.() || 'updated'} <b>{p.title}</b></>
+    case 'status': return <>{({ CURRENT: 'started watching', COMPLETED: 'finished', PLANNING: 'plans to watch', PAUSED: 'paused', DROPPED: 'dropped', REPEATING: 'is rewatching' })[p.status] || 'updated'} <b>{p.title}</b></>
     case 'trade': return <>{p.qty > 0 ? 'bought' : 'sold'} {Math.abs(p.qty)} <b>${p.sym}</b></>
     case 'hype_champ': return <>crowned <b>{p.title}</b> {p.mode === 'song' ? 'the greatest anime song 🎵' : 'the hypest moment ever 🔥'}</>
     case 'fantasy_team': return <>drafted their {p.season} fantasy team</>
     case 'ep_rate': return <>rated an episode of <b>{p.title}</b></>
-    case 'achievement': return <>unlocked <b>{p.label || 'an achievement'}</b></>
+    case 'achievement': { const a = ACH[p.key]; return <>unlocked {a ? <b>{a.icon} {a.label}</b> : <b>{p.label || 'an achievement'}</b>}</> }
     default: return <>{a.kind.replace('_', ' ')}</>
   }
 }

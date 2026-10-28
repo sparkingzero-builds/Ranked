@@ -978,3 +978,6 @@ body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-even
   .hpgrid { grid-template-columns: 1fr; } .hpmain { grid-row: auto; min-height: 380px; }
   .hprest { grid-template-columns: repeat(4, 1fr); } .hprrow { grid-template-columns: 60px 1fr 60px; }
 }
+.hpgrid.nomain { grid-template-columns: repeat(3, 1fr); }
+.hpempty { margin: 0 0 22px; padding: 14px 16px; background: #140e35; border-left: 4px solid var(--acc); color: #d9d4ff; }
+@media (max-width: 860px) { .hpgrid.nomain { grid-template-columns: 1fr; } }
