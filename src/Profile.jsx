@@ -254,7 +254,7 @@ function Rivalry({ them, me, name }) {
     <div className="hprverdict">{myW > theirW ? `You're winning this rivalry 😤` : myW < theirW ? `${name} is clearing you right now 💀` : 'Dead even. Settle it.'}</div>
     {rows.map(([l, a, b]) => <div key={l} className="hprrow">
       <b className={a > b ? 'win' : ''}>{a.toLocaleString()}</b>
-      <div className="hprbar"><div className="l" style={{ width: `${(a / ((a + b) || 1)) * 100}%` }} /><span>{l}</span></div>
+      <div className="hprbar"><div className="l" style={{ width: `${a + b ? (a / (a + b)) * 100 : 50}%` }} /><span>{l}</span></div>
       <b className={b > a ? 'win' : ''}>{b.toLocaleString()}</b>
     </div>)}
   </div>

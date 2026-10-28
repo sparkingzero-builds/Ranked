@@ -83,13 +83,18 @@ export async function fetchMediaDetail(id) {
 }
 
 // Passport: extra details for finished shows (studio, season, source, popularity), 50 per request
+// cached in localStorage: studio/source/season never change, and two passports loading at once can hit AniList's rate limit
+const PP_KEY = 'ranked.cache.passport'
 export async function fetchPassportMedia(ids) {
-  const out = {}
-  for (let k = 0; k < ids.length; k += 50) {
+  let cache = {}
+  try { cache = JSON.parse(localStorage.getItem(PP_KEY)) || {} } catch {}
+  const out = {}, need = ids.filter(id => { if (cache[id]) { out[id] = cache[id]; return false } return true })
+  for (let k = 0; k < need.length; k += 50) {
     const d = await gql(`query($ids:[Int]){ Page(perPage:50){ media(id_in:$ids){ id season seasonYear format source popularity countryOfOrigin episodes
-      startDate { year } studios(isMain:true){ nodes { name } } } } }`, { ids: ids.slice(k, k + 50) })
-    for (const m of d.Page.media) out[m.id] = m
+      startDate { year } studios(isMain:true){ nodes { name } } } } }`, { ids: need.slice(k, k + 50) })
+    for (const m of d.Page.media) out[m.id] = cache[m.id] = m
   }
+  try { localStorage.setItem(PP_KEY, JSON.stringify(cache)) } catch {}
   return out
 }
 
